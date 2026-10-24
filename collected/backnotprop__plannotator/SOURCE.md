@@ -1,0 +1,24 @@
+# backnotprop/plannotator
+
+Copied from https://github.com/backnotprop/plannotator (license: **Apache-2.0**). The upstream license file is kept in this folder. All credit goes to the original authors.
+
+| Skill | Upstream path | What it does |
+|---|---|---|
+| [apps--skills--claude--plannotator-annotate](apps--skills--claude--plannotator-annotate/) | `apps/skills/claude/plannotator-annotate` | Open Plannotator's annotation UI for a markdown file, HTML file, URL, or folder and then respond to the returned annotations. |
+| [apps--skills--claude--plannotator-review](apps--skills--claude--plannotator-review/) | `apps/skills/claude/plannotator-review` | Open Plannotator's browser-based code review UI for the current worktree, another directory, or a pull request URL, then act on the feedback that comes back. |
+| [apps--skills--core--plannotator-annotate](apps--skills--core--plannotator-annotate/) | `apps/skills/core/plannotator-annotate` | Open Plannotator's annotation UI for a markdown file, plain-text config file (.yaml, .json, .toml, .ini, .csv, .log, …), HTML file, URL, or folder and then respond to the returned annotations. |
+| [apps--skills--core--plannotator-last](apps--skills--core--plannotator-last/) | `apps/skills/core/plannotator-last` | Open Plannotator on the latest rendered assistant message and use the returned annotations to revise that message or continue. |
+| [apps--skills--core--plannotator-review](apps--skills--core--plannotator-review/) | `apps/skills/core/plannotator-review` | Open Plannotator's browser-based code review UI for the current worktree, another directory, or a pull request URL, then act on the feedback that comes back. |
+| [apps--vibe--skills--plannotator-annotate](apps--vibe--skills--plannotator-annotate/) | `apps/vibe/skills/plannotator-annotate` | Open Plannotator's annotation UI for a file, folder, or URL, then address the returned annotations. |
+| [apps--vibe--skills--plannotator-last](apps--vibe--skills--plannotator-last/) | `apps/vibe/skills/plannotator-last` | Open Plannotator on the latest rendered assistant message and use the returned annotations to revise that message or continue. |
+| [apps--vibe--skills--plannotator-review](apps--vibe--skills--plannotator-review/) | `apps/vibe/skills/plannotator-review` | Open Plannotator's browser-based code review UI and address the returned feedback. |
+| [plannotator](plannotator/) | `apps/skills/core/plannotator` | Reference for using Plannotator (its `plannotator` tool when you have one, otherwise the CLI): plan review, code review, annotating files, URLs, folders, and running local apps, annotating the last… |
+| [plannotator-annotate](plannotator-annotate/) | `apps/kiro-cli/skills/plannotator-annotate` | Open Plannotator's annotation UI for a file, folder, or URL, then address the returned annotations. |
+| [plannotator-compound](plannotator-compound/) | `apps/skills/extra/plannotator-compound` | Analyze a user's Plannotator plan archive to extract denial patterns, feedback taxonomy, evolution over time, and actionable prompt improvements — then produce a polished HTML dashboard report. Fal… |
+| [plannotator-last](plannotator-last/) | `apps/skills/claude/plannotator-last` | Open Plannotator on the latest rendered assistant message and use the returned annotations to revise that message or continue. |
+| [plannotator-review](plannotator-review/) | `apps/kiro-cli/skills/plannotator-review` | Open Plannotator's browser-based code review UI and address the returned feedback. |
+| [plannotator-setup-goal](plannotator-setup-goal/) | `apps/skills/extra/plannotator-setup-goal` | Turn an idea or objective into a goal package for /goal. Interviews the user, builds a reviewed fact sheet via Plannotator, then explores the codebase to produce an execution plan. |
+| [plannotator-visual-explainer](plannotator-visual-explainer/) | `apps/skills/extra/plannotator-visual-explainer` | Generate self-contained HTML visualizations with Plannotator theming. Use for implementation plans, PR explainers, architecture diagrams, data tables, slide decks, and any visual explanation of tec… |
+| [release](release/) | `.agents/skills/release` | Prepare and execute a Plannotator release — draft release notes with full contributor credit, bump versions across all package files, build in dependency order, and kick off the tag-driven release… |
+| [review-renovate](review-renovate/) | `.agents/skills/review-renovate` | Review Renovate bot PRs that update GitHub Actions dependencies. Verifies supply chain integrity by checking pinned commit SHAs against upstream tagged releases, reviews changelogs for breaking cha… |
+| [update-deps](update-deps/) | `.agents/skills/update-deps` | Audit and update npm/Bun dependencies with supply chain integrity checks — verifies maintainers, publish age, tarball diffs, and provenance before bumping. Defers risky packages to ~/.supply-chain/… |

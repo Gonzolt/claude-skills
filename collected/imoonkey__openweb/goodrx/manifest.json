@@ -1,0 +1,14 @@
+{
+  "name": "goodrx",
+  "version": "1.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://www.goodrx.com",
+  "compiled_at": "2026-04-01T00:00:00Z",
+  "requires_auth": false,
+  "last_verified": "",
+  "quarantined": false,
+  "fingerprint": {
+    "response_shape_hash": "",
+    "last_validated": ""
+  }
+}

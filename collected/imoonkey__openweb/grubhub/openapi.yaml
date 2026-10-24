@@ -1,0 +1,375 @@
+openapi: '3.1.0'
+info:
+  title: Grubhub
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-17T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://api-gtm.grubhub.com
+    x-openweb:
+      transport: page
+      page_plan:
+        entry_url: https://www.grubhub.com/
+        warm: true
+        warm_origin: page
+paths:
+  /restaurants/search/search_listing:
+    get:
+      operationId: searchRestaurants
+      summary: Search restaurants by location and cuisine
+      x-openweb:
+        permission: read
+        build:
+          stable_id: grub0001
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: grubhub-read
+          operation: searchRestaurants
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Latitude of delivery location (e.g. 40.7484 for Midtown Manhattan).
+          example: 40.7484
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Longitude of delivery location (e.g. -73.9857 for Midtown Manhattan).
+          example: -73.9857
+        - name: searchTerm
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 'Cuisine or restaurant name to filter by (e.g. "pizza", "sushi", "Chinese").'
+          example: pizza
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Number of results per page (max 50).
+          example: 20
+        - name: pageNum
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination (starts at 1).
+          example: 1
+        - name: orderMethod
+          in: query
+          required: false
+          schema:
+            type: string
+            const: delivery
+          description: Fixed — Grubhub search-listing always uses delivery order method.
+        - name: locationMode
+          in: query
+          required: false
+          schema:
+            type: string
+            const: DELIVERY
+          description: Fixed — location mode for delivery search.
+      responses:
+        '200':
+          description: Trimmed restaurant search results. Prices in USD (dollars, not cents).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalResults:
+                    type: integer
+                    description: Total matching restaurants.
+                  restaurants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        restaurantId:
+                          type: string
+                          description: Unique restaurant ID (use with getMenu and getDeliveryEstimate).
+                        name:
+                          type: string
+                        logo:
+                          type:
+                            - string
+                            - 'null'
+                        cuisines:
+                          type: array
+                          items:
+                            type: string
+                        rating:
+                          type:
+                            - number
+                            - 'null'
+                          description: Average rating (0-5 scale).
+                        ratingCount:
+                          type: integer
+                        priceRating:
+                          type: integer
+                          description: Price level (1-4, dollar signs).
+                        deliveryFee:
+                          type: number
+                          description: Delivery fee in USD.
+                        deliveryEstimateMin:
+                          type:
+                            - integer
+                            - 'null'
+                          description: Minimum delivery time in minutes.
+                        deliveryEstimateMax:
+                          type:
+                            - integer
+                            - 'null'
+                          description: Maximum delivery time in minutes.
+                        address:
+                          type:
+                            - string
+                            - 'null'
+                          description: Street address.
+                        distance:
+                          type:
+                            - number
+                            - 'null'
+                          description: Distance from delivery location in miles.
+
+  /restaurants/{restaurantId}~menu:
+    get:
+      operationId: getMenu
+      summary: Get a restaurant's menu with categories, items, and prices
+      x-openweb:
+        permission: read
+        actual_path: /restaurants/{restaurantId}
+        unwrap: restaurant
+        build:
+          stable_id: grub0002
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: grubhub-read
+          operation: getMenu
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Restaurant ID from searchRestaurants (e.g. "64436").'
+          example: '64436'
+        - name: hideChoiceCategories
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+          description: Fixed — exclude choice (modifier) categories from the menu.
+        - name: orderType
+          in: query
+          required: false
+          schema:
+            type: string
+            const: standard
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: integer
+            const: 4
+        - name: variationId
+          in: query
+          required: false
+          schema:
+            type: string
+            const: default
+        - name: hideUnavailableMenuItems
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+        - name: hideMenuItems
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: false
+        - name: showMenuItemCoupons
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+        - name: includeOffers
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+        - name: locationMode
+          in: query
+          required: false
+          schema:
+            type: string
+            const: DELIVERY
+      responses:
+        '200':
+          description: Trimmed menu with categories and items. Prices in USD (dollars, not cents).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restaurantName:
+                    type: string
+                    description: Restaurant name.
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Menu category name (e.g. "Appetizers", "Pizza").
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              itemId:
+                                type: string
+                                description: Menu item ID.
+                              name:
+                                type: string
+                              description:
+                                type:
+                                  - string
+                                  - 'null'
+                              price:
+                                type: number
+                                description: Price in USD.
+                              popular:
+                                type: boolean
+
+  /restaurants/{restaurantId}~delivery:
+    get:
+      operationId: getDeliveryEstimate
+      summary: Get delivery and pickup availability, fees, and time estimates
+      x-openweb:
+        permission: read
+        actual_path: /restaurants/{restaurantId}
+        unwrap: restaurant_availability
+        build:
+          stable_id: grub0003
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: grubhub-read
+          operation: getDeliveryEstimate
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Restaurant ID from searchRestaurants (e.g. "64436").'
+          example: '64436'
+        - name: hideChoiceCategories
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+        - name: orderType
+          in: query
+          required: false
+          schema:
+            type: string
+            const: standard
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: integer
+            const: 4
+        - name: variationId
+          in: query
+          required: false
+          schema:
+            type: string
+            const: default
+        - name: hideUnavailableMenuItems
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+        - name: hideMenuItems
+          in: query
+          required: false
+          schema:
+            type: boolean
+            const: true
+          description: Fixed — drop menu items from the payload; we only want availability here.
+        - name: locationMode
+          in: query
+          required: false
+          schema:
+            type: string
+            const: DELIVERY
+      responses:
+        '200':
+          description: Trimmed delivery/pickup availability and fees. Money in USD (dollars, not cents).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restaurantId:
+                    type: string
+                  open:
+                    type: boolean
+                  openDelivery:
+                    type: boolean
+                  openPickup:
+                    type: boolean
+                  deliveryEstimateMin:
+                    type: number
+                    description: Minimum delivery time in minutes.
+                  deliveryEstimateMax:
+                    type: number
+                    description: Maximum delivery time in minutes.
+                  pickupEstimateMin:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Minimum pickup time in minutes.
+                  pickupEstimateMax:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Maximum pickup time in minutes.
+                  deliveryFee:
+                    type: number
+                    description: Delivery fee in USD.
+                  orderMinimum:
+                    type: number
+                    description: Minimum order amount in USD.
+                  salesTax:
+                    type: number
+                    description: Sales tax rate (e.g. 8.875 for 8.875%).

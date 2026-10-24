@@ -1,0 +1,240 @@
+openapi: '3.1.0'
+info:
+  title: Uber Rides API
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: true
+servers:
+  - url: https://m.uber.com
+    x-openweb:
+      transport: page
+      auth:
+        type: cookie_session
+paths:
+  /internal/searchLocations:
+    post:
+      operationId: searchLocations
+      summary: Search for Uber pickup/dropoff locations by keyword — returns coordinates for getRideEstimate
+      x-openweb:
+        permission: read
+        adapter:
+          name: uber-rides
+          operation: searchLocations
+        transport: page
+        build:
+          stable_id: ur0001
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Search text (place name, address, landmark).
+                  example: Times Square New York
+                latitude:
+                  type: number
+                  default: 0
+                  description: Reference latitude for search relevance (0 for no bias).
+                longitude:
+                  type: number
+                  default: 0
+                  description: Reference longitude for search relevance (0 for no bias).
+                type:
+                  type: string
+                  enum: [PICKUP, DROPOFF]
+                  default: PICKUP
+                  description: Whether searching for a pickup or dropoff location.
+      responses:
+        '200':
+          description: Matching locations with coordinates.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  locations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Location UUID.
+                        name:
+                          type: string
+                          description: Place name.
+                        address:
+                          type: string
+                          description: Formatted address.
+                        latitude:
+                          type: number
+                        longitude:
+                          type: number
+                        type:
+                          type: string
+                        source:
+                          type: string
+
+  /internal/getRideEstimate:
+    post:
+      operationId: getRideEstimate
+      summary: Get Uber ride fare estimates — different vehicle types with prices and ETAs
+      x-openweb:
+        permission: read
+        adapter:
+          name: uber-rides
+          operation: getRideEstimate
+        transport: page
+        build:
+          stable_id: ur0002
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pickup
+                - destination
+              properties:
+                pickup:
+                  type: object
+                  required: [latitude, longitude]
+                  description: Pickup location coordinates (from searchLocations).
+                  properties:
+                    latitude:
+                      type: number
+                      example: 40.758
+                    longitude:
+                      type: number
+                      example: -73.9855
+                destination:
+                  type: object
+                  required: [latitude, longitude]
+                  description: Dropoff location coordinates (from searchLocations).
+                  properties:
+                    latitude:
+                      type: number
+                      example: 40.7484
+                    longitude:
+                      type: number
+                      example: -73.9857
+      responses:
+        '200':
+          description: Available ride types with fares and ETAs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rides:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        displayName:
+                          type: string
+                          description: Ride type name (e.g. "UberX", "Black SUV", "Share").
+                        description:
+                          type: string
+                        fare:
+                          type: string
+                          description: Formatted fare (e.g. "US$16.07").
+                        fareAmountCents:
+                          type: integer
+                          description: Fare in cents.
+                        capacity:
+                          type: integer
+                          description: Max passengers.
+                        estimatedTripTimeSec:
+                          type: integer
+                          description: Estimated trip duration in seconds.
+                        etaString:
+                          type: string
+                          description: Driver arrival ETA (e.g. "2 mins").
+                        currencyCode:
+                          type: string
+                  unavailableMessage:
+                    type:
+                      - string
+                      - 'null'
+                    description: Message if rides unavailable in area.
+
+  /internal/getRideHistory:
+    post:
+      operationId: getRideHistory
+      summary: Get past Uber ride history — trips with fares, dates, details
+      x-openweb:
+        permission: read
+        adapter:
+          name: uber-rides
+          operation: getRideHistory
+        transport: page
+        build:
+          stable_id: ur0003
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  default: 10
+                  description: Number of rides to return.
+                nextPageToken:
+                  type: string
+                  description: Pagination token from previous response.
+      responses:
+        '200':
+          description: Past ride history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rides:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        uuid:
+                          type: string
+                          description: Trip UUID.
+                        title:
+                          type: string
+                          description: Ride type.
+                        subtitle:
+                          type: string
+                          description: Date and route summary.
+                        fare:
+                          type: string
+                          description: Trip cost.
+                        detailUrl:
+                          type: string
+                          description: Link to trip details.
+                  nextPageToken:
+                    type:
+                      - string
+                      - 'null'
+                  hasMore:
+                    type: boolean

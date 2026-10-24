@@ -1,0 +1,10 @@
+{
+  "name": "angellist",
+  "domain": "venture.angellist.com",
+  "site_url": "https://venture.angellist.com",
+  "description": "AngelList Venture — deal invites, messages, and syndicate posts",
+  "category": "finance",
+  "requiresBrowser": true,
+  "requiresLogin": true,
+  "tags": ["investing", "venture-capital", "deals", "messaging"]
+}

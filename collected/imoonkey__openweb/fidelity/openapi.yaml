@@ -1,0 +1,842 @@
+openapi: '3.1.0'
+info:
+  title: Fidelity
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-02T00:00:00Z'
+    requires_auth: false
+servers:
+- url: https://digital.fidelity.com
+  x-openweb:
+    transport: page
+    page_plan:
+      entry_url: https://digital.fidelity.com/research/quote-and-research/
+      wait_until: domcontentloaded
+      settle_ms: 2000
+    csrf:
+      type: api_response
+      endpoint: https://digital.fidelity.com/prgw/digital/research/api/tokens
+      extract: csrfToken
+      inject:
+        header: X-CSRF-TOKEN
+paths:
+  /prgw/digital/research/api/quote:
+    post:
+      operationId: getQuote
+      summary: Get real-time stock quote — price, volume, PE ratio, market cap, 52-week range, dividends, short interest
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0001
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - symbol
+              properties:
+                symbol:
+                  type: string
+                  description: Ticker symbol (e.g. "AAPL", "TSLA", "SPY").
+            example:
+              symbol: AAPL
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quoteData]
+                properties:
+                  quoteData:
+                    type: object
+                    required: [symbol, lastPrice, netChgToday, pctChgToday, volume]
+                    properties:
+                      symbol:
+                        type: string
+                      companyName:
+                        type: string
+                      lastPrice:
+                        type: string
+                      netChgToday:
+                        type: string
+                      pctChgToday:
+                        type: string
+                      openPrice:
+                        type: string
+                      previousClose:
+                        type: string
+                      dayHigh:
+                        type: string
+                      dayLow:
+                        type: string
+                      volume:
+                        type: string
+                      avgVol10Day:
+                        type: string
+                      marketCap:
+                        type: string
+                      peRatio:
+                        type: string
+                      eps:
+                        type: string
+                      yearHighPrice:
+                        type: string
+                      yearLowPrice:
+                        type: string
+                      annualizedDividend:
+                        type: string
+                      yield:
+                        type: string
+                      primaryExchange:
+                        type: string
+                      instrumentType:
+                        type: string
+
+  /prgw/digital/research/api/market-bar:
+    post:
+      operationId: getMarketSummary
+      summary: Get major market indices (S&P 500, DJIA, NASDAQ) with current prices and changes
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0004
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                supportCrypto:
+                  type: string
+                  default: 'N'
+            example:
+              supportCrypto: 'N'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quotes]
+                properties:
+                  quotes:
+                    type: array
+                    items:
+                      type: object
+                      required: [label, lastPrice, netChgToday, pctChgToday]
+                      properties:
+                        label:
+                          type: string
+                        lastPrice:
+                          type: string
+                        netChgToday:
+                          type: string
+                        pctChgToday:
+                          type: string
+                        netChgUp:
+                          type: boolean
+
+  /prgw/digital/research/api/company-profile:
+    post:
+      operationId: getCompanyProfile
+      summary: Get company profile — sector, industry, employees, address, website, description
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0002
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - symbols
+              properties:
+                symbols:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of ticker symbols (e.g. ["AAPL"]).
+            example:
+              symbols: ["AAPL"]
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [details]
+                properties:
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      required: [symbol, companyName, sector, industry]
+                      properties:
+                        symbol:
+                          type: string
+                        companyName:
+                          type: string
+                        companyDesc:
+                          type: string
+                        sector:
+                          type: string
+                        industry:
+                          type: string
+                        website:
+                          type: string
+                        employeeCount:
+                          type: integer
+
+  /prgw/digital/research/api/news-headlines:
+    post:
+      operationId: getNewsHeadlines
+      summary: Get news headlines for a stock or market topic — headline text, provider, date, impact rating
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0003
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - symbol
+              properties:
+                symbol:
+                  type: string
+                  description: Ticker symbol (e.g. "AAPL") or topic code (e.g. "FI/Top.Investing.RT" for top investing news).
+                count:
+                  type: integer
+                  default: 21
+                  description: Number of headlines to return.
+            example:
+              symbol: AAPL
+              count: 21
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [headlines]
+                properties:
+                  headlines:
+                    type: array
+                    items:
+                      type: object
+                      required: [text, provider, resDate, resTime]
+                      properties:
+                        text:
+                          type: string
+                        summary:
+                          type: string
+                        provider:
+                          type: string
+                        resDate:
+                          type: string
+                        resTime:
+                          type: string
+                        impactRating:
+                          type: integer
+
+  /prgw/digital/research/api/sector-research/index-quote:
+    post:
+      operationId: getIndexQuotes
+      summary: Get quotes for global indices or currencies — symbol, name, percent change, ask price
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0005
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - symbol
+              properties:
+                symbol:
+                  type: string
+                  description: 'Comma-separated index/currency symbols (e.g. ".SPTSE,.FTSE,.N225" or "EUR=,JPY=,GBP=").'
+            example:
+              symbol: '.SPTSE,.MXX,.E1DOW,.FTSE,.DEDOW,.FRDOW,.N225,.HKDOW,.AXJO'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quotes]
+                properties:
+                  quotes:
+                    type: array
+                    items:
+                      type: object
+                      required: [symbol, name, pctChgToday]
+                      properties:
+                        symbol:
+                          type: string
+                        name:
+                          type: string
+                        pctChgToday:
+                          type: string
+                        askPrice:
+                          type: string
+                        isPositive:
+                          type: boolean
+
+  /prgw/digital/research/api/pass-through:
+    post:
+      operationId: getResearchData
+      summary: Get analyst ratings, ETF holdings, or commentary via Fidelity research proxy
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0006
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - method
+              - apiTokenName
+              - params
+              properties:
+                method:
+                  type: string
+                  enum: ['GET']
+                  description: HTTP method (always "GET").
+                apiTokenName:
+                  type: string
+                  enum: ['analyticRatings', 'portfolioCompositions', 'commentary', 'companyProfileSummary']
+                  description: 'Research data type: analyticRatings, portfolioCompositions, commentary, or companyProfileSummary.'
+                params:
+                  type: string
+                  description: Query string with symbol (e.g. "?symbols=AAPL").
+            example:
+              method: GET
+              apiTokenName: analyticRatings
+              params: '?symbols=AAPL'
+      responses:
+        '200':
+          description: Success. Response shape varies by apiTokenName.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  date:
+                    type: string
+                  status:
+                    type: integer
+                  data:
+                    type: object
+
+                required:
+                - id
+                - data
+  /prgw/digital/research/api/company-logo:
+    post:
+      operationId: getCompanyLogo
+      summary: Get company logo image URL for a stock symbol
+      x-openweb:
+        permission: read
+        adapter: false
+        build:
+          stable_id: fid0007
+          tool_version: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - fvSymbols
+              properties:
+                fvSymbols:
+                  type: string
+                  description: Ticker symbol (e.g. "AAPL").
+            example:
+              fvSymbols: AAPL
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol:
+                          type: string
+                        images:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              size:
+                                type: string
+                              location:
+                                type: string
+
+                required:
+                - logos
+  /fund-screener/api/search/v1/funds:
+    post:
+      operationId: searchFunds
+      summary: Search mutual funds by criteria — returns fund name, ticker, CUSIP, category, family, ratings, performance
+      x-openweb:
+        permission: read
+        build:
+          stable_id: fid0011
+          tool_version: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - searchFilter
+              - businessChannel
+              properties:
+                searchFilter:
+                  type: object
+                  description: Filter criteria for fund search.
+                  properties:
+                    includeLeveragedAndInverseFunds:
+                      type: string
+                      default: 'N'
+                    openToNewInvestors:
+                      type: string
+                      default: OPEN
+                    investmentTypeCode:
+                      type: string
+                      default: MFN
+                      description: 'Fund type (MFN for mutual funds).'
+                    fidelityFundOnly:
+                      type: string
+                      description: '"F" to show only Fidelity-managed funds. Omit for all funds.'
+                sortBy:
+                  type: string
+                  default: legalName
+                  description: Sort field (e.g. "legalName").
+                sortOrder:
+                  type: string
+                  default: ASC
+                  description: Sort order (ASC or DESC).
+                currentPageNumber:
+                  type: integer
+                  default: 1
+                businessChannel:
+                  type: string
+                  default: RETAIL
+                noOfRowsPerPage:
+                  type: integer
+                  default: 20
+                subjectAreaCode:
+                  type: string
+                  default: 'fundInformation,mstarRatings,dailyPerformance,expensesAndFees'
+                  description: 'Comma-separated data sections to include.'
+            example:
+              searchFilter:
+                includeLeveragedAndInverseFunds: 'N'
+                openToNewInvestors: OPEN
+                investmentTypeCode: MFN
+              sortBy: legalName
+              sortOrder: ASC
+              currentPageNumber: 1
+              businessChannel: RETAIL
+              noOfRowsPerPage: 20
+              subjectAreaCode: 'fundInformation,mstarRatings,dailyPerformance,expensesAndFees'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  funds:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        fundInformation:
+                          type: object
+                          properties:
+                            cusip:
+                              type: string
+                            ticker:
+                              type: string
+                            legalName:
+                              type: string
+                            fundFamilyName:
+                              type: string
+                            mstarCategoryName:
+                              type: string
+                            mstarAssetClassName:
+                              type: string
+                        mstarOverallRating:
+                          type: string
+                required:
+                - funds
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node
+
+  /fund-screener/api/classification/v1/assetclassesandcategories:
+    get:
+      operationId: listAssetClasses
+      summary: List all Morningstar asset classes and categories for fund screening
+      x-openweb:
+        permission: read
+        build:
+          stable_id: b300c9591c8935c6
+          tool_version: 2
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                    description:
+                      type: string
+                    categories:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          code:
+                            type: string
+                          description:
+                            type: string
+                  required:
+                  - description
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node
+
+  /fund-screener/api/classification/v1/fundfamilies:
+    get:
+      operationId: listFundFamilies
+      summary: List all fund families available for screening
+      x-openweb:
+        permission: read
+        build:
+          stable_id: e49b70e99dceab57
+          tool_version: 2
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                    description:
+                      type: string
+                  required:
+                  - description
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node
+
+  /mutual-funds/api/v1/investments/fundpicks:
+    get:
+      operationId: getFundPicks
+      summary: Get Fidelity fund picks — ticker, legal name, family, category, Morningstar rating
+      x-openweb:
+        permission: read
+        build:
+          stable_id: fid0010
+          tool_version: 2
+      parameters:
+      - name: mstarAssetClassCd
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Morningstar asset class code (e.g. "DSTK" for domestic stock, "INTL" for international).
+      - name: mstarCtgyCd
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Morningstar category code (e.g. "LB" for large blend, "LG" for large growth).
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fundPicks]
+                properties:
+                  fundPicks:
+                    type: object
+                    properties:
+                      funds:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            fundInformation:
+                              type: object
+                              properties:
+                                cusip:
+                                  type: string
+                                ticker:
+                                  type: string
+                                legalName:
+                                  type: string
+                                fundFamilyName:
+                                  type: string
+                                mstarCategoryName:
+                                  type: string
+                            mstarOverallRating:
+                              type: string
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node
+
+  /mutual-funds/api/v1/investments/{cusip}/header:
+    get:
+      operationId: getFundPerformance
+      summary: Get mutual fund performance — annual returns (YTD, 1/3/5/10yr), category, fees
+      x-openweb:
+        permission: read
+        build:
+          stable_id: fid0008
+          tool_version: 2
+      parameters:
+      - name: cusip
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Fund CUSIP identifier (e.g. "315911750" for FXAIX, "316071109" for FBGRX).
+      - name: funduniverse
+        in: query
+        required: true
+        schema:
+          type: string
+          default: RETAIL
+        description: Fund universe (e.g. "RETAIL").
+      - name: documentId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Same as CUSIP (e.g. "315911750").
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  performanceAverageAnnualReturns:
+                    type: object
+                    properties:
+                      subjectAreaData:
+                        type: object
+                        properties:
+                          ytdDaily:
+                            type: string
+                          averageAnnualReturns:
+                            type: object
+                            properties:
+                              year1:
+                                type: string
+                              year3:
+                                type: string
+                              year5:
+                                type: string
+                              year10:
+                                type: string
+                required:
+                - performanceAverageAnnualReturns
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node
+
+  /mutual-funds/api/v1/investments/{cusip}/summary:
+    get:
+      operationId: getFundSummary
+      summary: Get mutual fund summary — composition, ratings, fees, top holdings
+      x-openweb:
+        permission: read
+        build:
+          stable_id: fid0009
+          tool_version: 2
+      parameters:
+      - name: cusip
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Fund CUSIP identifier (e.g. "315911750" for FXAIX).
+      - name: funduniverse
+        in: query
+        required: true
+        schema:
+          type: string
+          default: RETAIL
+        description: Fund universe (e.g. "RETAIL").
+      - name: documentId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Same as CUSIP (e.g. "315911750").
+      - name: period
+        in: query
+        required: true
+        schema:
+          type: string
+          default: 10YR
+        description: Period for performance data (e.g. "10YR", "5YR").
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fundInformation:
+                    type: object
+                    properties:
+                      subjectAreaData:
+                        type: object
+                        properties:
+                          tradingSymbol:
+                            type: string
+                          cusip:
+                            type: string
+                          legalName:
+                            type: string
+                          inceptionDate:
+                            type: string
+                          mstarCategory:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                              code:
+                                type: string
+                          fundFamily:
+                            type: string
+                  details:
+                    type: object
+                    properties:
+                      subjectAreaData:
+                        type: object
+                        properties:
+                          morningstarCategory:
+                            type: string
+                          grossExpenseRatio:
+                            type: object
+                          netExpenseRatio:
+                            type: object
+                          navData:
+                            type: object
+                          portfolioNetAssets:
+                            type: object
+                  top10Holdings:
+                    type: object
+                    properties:
+                      subjectAreaData:
+                        type: object
+                        properties:
+                          asOfDate:
+                            type: string
+                          totalNumberOfHoldings:
+                            type: string
+                          classBreakDown:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                subClassName:
+                                  type: string
+                                breakDownPercentage:
+                                  type: object
+                  quarterEndAverageAnnualReturns:
+                    type: object
+                    properties:
+                      subjectAreaData:
+                        type: object
+                        properties:
+                          asOfDate:
+                            type: string
+                          fund:
+                            type: object
+                          primary:
+                            type: object
+                  compositionByInstrument:
+                    type: object
+                    nullable: true
+                  assetAllocation:
+                    type: object
+                required:
+                - fundInformation
+      servers:
+      - url: https://fundresearch.fidelity.com
+        x-openweb:
+          transport: node

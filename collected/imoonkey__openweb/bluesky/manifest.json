@@ -1,0 +1,16 @@
+{
+  "name": "bluesky",
+  "display_name": "Bluesky",
+  "domain": "public.api.bsky.app",
+  "site_url": "https://bsky.app",
+  "description": "Bluesky AT Protocol social network — profiles, feeds, posts, search, engagement, social graph",
+  "category": "social",
+  "requires_browser": true,
+  "requires_login": true,
+  "last_verified": "2026-04-02T21:55:02.345Z",
+  "quarantined": false,
+  "fingerprint": {
+    "response_shape_hash": "getAuthorFeed:pending,getFeed:pending,getFollowers:137230c3d8dbbfa1,getFollows:pending,getPosts:pending,getPostThread:pending,getProfile:53558a803dbba0b5,searchActors:123508d668569a18,searchPosts:pending",
+    "last_validated": "2026-04-02T21:55:02.345Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "operation_id": "searchPlaces",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "query": "coffee shops in San Francisco"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

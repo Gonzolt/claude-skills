@@ -1,0 +1,407 @@
+openapi: 3.1.0
+info:
+  title: apple-podcasts
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-01T23:02:37.299000Z
+    requires_auth: true
+servers:
+- url: https://amp-api.podcasts.apple.com
+  x-openweb:
+    transport: page
+    page_plan:
+      entry_url: https://podcasts.apple.com/us/charts
+      warm: true
+      warm_origin: page
+    auth:
+      type: page_global
+      expression: window.MusicKit?.getInstance()?.developerToken
+      inject:
+        header: Authorization
+        prefix: "Bearer "
+paths:
+  /v1/catalog/us/search/groups:
+    get:
+      operationId: searchPodcasts
+      summary: "Search podcasts by keyword — returns podcast titles, authors, artwork, ratings, episode counts"
+      x-openweb:
+        permission: read
+        adapter:
+          name: apple-podcasts
+          operation: searchPodcasts
+        build:
+          stable_id: ap0001
+          tool_version: 2
+      parameters:
+      - name: term
+        in: query
+        required: true
+        description: Search query string
+        schema:
+          type: string
+        example: technology
+      - name: l
+        in: query
+        required: false
+        description: Locale code
+        schema:
+          type: string
+          default: en-US
+        example: en-US
+      - name: platform
+        in: query
+        required: false
+        description: Client platform (AMP API constant)
+        schema:
+          type: string
+          default: web
+      - name: types
+        in: query
+        required: false
+        description: Result entity types
+        schema:
+          type: string
+          default: "podcasts,podcast-channels,podcast-episodes,categories,editorial-items"
+      - name: groups
+        in: query
+        required: false
+        description: Result groupings
+        schema:
+          type: string
+          default: "category,channel,episode,show,top"
+      - name: limit
+        in: query
+        required: false
+        description: Max items per group
+        schema:
+          type: string
+          default: "25"
+      - name: extend
+        in: query
+        required: false
+        description: Additional fields to include (editorialArtwork, feedUrl)
+        schema:
+          type: array
+          items:
+            type: string
+        example:
+        - editorialArtwork
+        - feedUrl
+      responses:
+        "200":
+          description: Search results grouped by type (top, shows, episodes).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    properties:
+                      groups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            groupId:
+                              type: string
+                            name:
+                              type: string
+                            data:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: string
+                                  type:
+                                    type: string
+                                    description: "Entity type: podcasts, podcast-episodes, podcast-channels, categories"
+                                  attributes:
+                                    type: object
+                                    description: "Trimmed — artwork colors, offers, subscribable, displayType, kind, mediaKind, mediaKinds, guid, copyright, createdDate stripped"
+                required:
+                - results
+  /v1/catalog/us/podcasts/{id}:
+    get:
+      operationId: getPodcast
+      summary: "Get podcast details — title, author, description, artwork, episode list, ratings"
+      x-openweb:
+        permission: read
+        adapter:
+          name: apple-podcasts
+          operation: getPodcast
+        build:
+          stable_id: ap0002
+          tool_version: 2
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Apple Podcasts numeric ID
+        schema:
+          type: string
+        example: "917918570"
+      - name: extend
+        in: query
+        required: false
+        description: "Additional fields: userRating, availableEpisodeCount (feedUrl and editorialArtwork are not returned by current API)"
+        schema:
+          type: array
+          items:
+            type: string
+        example:
+        - userRating
+      - name: include
+        in: query
+        required: false
+        description: "Related resources: episodes, channel"
+        schema:
+          type: array
+          items:
+            type: string
+        example:
+        - episodes
+      - name: l
+        in: query
+        required: false
+        description: Locale code
+        schema:
+          type: string
+          default: en-US
+        example: en-US
+      - name: limit[episodes]
+        in: query
+        required: false
+        description: Max episodes to include (default 20)
+        schema:
+          type: integer
+        example: 20
+      responses:
+        "200":
+          description: Podcast detail with optional related resources (trimmed).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        attributes:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            artistName:
+                              type: string
+                            description:
+                              type: object
+                              properties:
+                                standard:
+                                  type: string
+                            artwork:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                width:
+                                  type: integer
+                                height:
+                                  type: integer
+                            genreNames:
+                              type: array
+                              items:
+                                type: string
+                            url:
+                              type: string
+                            contentRating:
+                              type: string
+                            trackCount:
+                              type: integer
+                            releaseDateTime:
+                              type: string
+                            languageTag:
+                              type: string
+                            userRating:
+                              type: object
+                              description: "Present when extend includes userRating"
+                              properties:
+                                value:
+                                  type: number
+                                ratingCount:
+                                  type: integer
+                        relationships:
+                          type: object
+                          properties:
+                            episodes:
+                              type: object
+                              properties:
+                                data:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      id:
+                                        type: string
+                                      type:
+                                        type: string
+                                      attributes:
+                                        type: object
+                                        properties:
+                                          name:
+                                            type: string
+                                          description:
+                                            type: object
+                                          durationInMilliseconds:
+                                            type: integer
+                                          releaseDateTime:
+                                            type: string
+                                          url:
+                                            type: string
+                required:
+                - data
+  /v1/catalog/us/search/suggestions:
+    get:
+      operationId: getSearchSuggestions
+      summary: "Get search autocomplete suggestions — podcast titles, episode titles matching prefix"
+      x-openweb:
+        permission: read
+        adapter:
+          name: apple-podcasts
+          operation: getSearchSuggestions
+        build:
+          stable_id: ap0003
+          tool_version: 2
+      parameters:
+      - name: term
+        in: query
+        required: true
+        description: Partial search query for autocomplete
+        schema:
+          type: string
+        example: tech
+      - name: l
+        in: query
+        required: false
+        description: Locale code
+        schema:
+          type: string
+          default: en-US
+        example: en-US
+      - name: platform
+        in: query
+        required: false
+        description: Client platform (AMP API constant)
+        schema:
+          type: string
+          default: web
+      - name: kinds
+        in: query
+        required: false
+        description: Suggestion kinds
+        schema:
+          type: string
+          default: "terms,topResults"
+      - name: types
+        in: query
+        required: false
+        description: Entity types for topResults
+        schema:
+          type: string
+          default: "podcasts,podcast-channels,podcast-episodes,categories,editorial-items"
+      responses:
+        "200":
+          description: Search suggestions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    properties:
+                      suggestions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            searchTerm:
+                              type: string
+                            displayTerm:
+                              type: string
+                required:
+                - results
+  /v1/editorial/us/groupings:
+    get:
+      operationId: getTopCharts
+      summary: "Get editorial groupings — browse categories, editorial tabs, curated sections"
+      x-openweb:
+        permission: read
+        adapter:
+          name: apple-podcasts
+          operation: getTopCharts
+        build:
+          stable_id: ap0004
+          tool_version: 2
+      parameters:
+      - name: name
+        in: query
+        required: false
+        description: "Grouping name (search-landing for main charts)"
+        schema:
+          type: string
+          default: search-landing
+        example: search-landing
+      - name: l
+        in: query
+        required: false
+        description: Locale code
+        schema:
+          type: string
+          default: en-US
+        example: en-US
+      - name: platform
+        in: query
+        required: false
+        description: Client platform (AMP API constant)
+        schema:
+          type: string
+          default: web
+      responses:
+        "200":
+          description: Editorial groupings with curated podcast lists.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        attributes:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            genreNames:
+                              type: array
+                              items:
+                                type: string
+                required:
+                - data

@@ -1,0 +1,1229 @@
+openapi: 3.1.0
+info:
+  title: douban
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-24T22:00:00Z
+    requires_auth: false
+servers:
+- url: https://m.douban.com
+  x-openweb:
+    transport: node
+    auth:
+      type: cookie_session
+paths:
+  # ── Movies ──────────────────────────────────────────────────────────
+
+  /rexxar/api/v2/search/movie:
+    get:
+      operationId: searchMovies
+      summary: "Search movies by keyword — returns title, rating, year, cover, genres, actors for matching films"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: searchMovies
+        build:
+          stable_id: search_movie_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Search keyword (e.g., movie title, actor name)"
+        example: "肖申克的救赎"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of results to return (default 20, max 50)"
+        example: 20
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset (default 0)"
+        example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        target_id:
+                          type: string
+                        target:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            title:
+                              type: string
+                            rating:
+                              type: object
+                              nullable: true
+                              properties:
+                                count:
+                                  type: integer
+                                value:
+                                  type: number
+                            cover_url:
+                              type: string
+                            card_subtitle:
+                              type: string
+                            abstract:
+                              type: string
+                            null_rating_reason:
+                              type: string
+                        target_type:
+                          type: string
+
+                required:
+                - items
+  /rexxar/api/v2/movie/{id}:
+    get:
+      operationId: getMovie
+      summary: "Get movie detail — title, rating, year, genres, directors, actors, summary, trailer, photos"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getMovie
+        build:
+          stable_id: movie_detail_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban movie subject ID (e.g., 1292052 for Shawshank Redemption)"
+        example: 1292052
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  original_title:
+                    type: string
+                  year:
+                    type: string
+                  rating:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      max:
+                        type: integer
+                      value:
+                        type: number
+                      star_count:
+                        type: number
+                  genres:
+                    type: array
+                    items:
+                      type: string
+                  countries:
+                    type: array
+                    items:
+                      type: string
+                  languages:
+                    type: array
+                    items:
+                      type: string
+                  durations:
+                    type: array
+                    items:
+                      type: string
+                  pubdate:
+                    type: array
+                    items:
+                      type: string
+                  intro:
+                    type: string
+                  cover_url:
+                    type: string
+                  pic:
+                    type: object
+                    properties:
+                      large:
+                        type: string
+                      normal:
+                        type: string
+                  directors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                  actors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                  aka:
+                    type: array
+                    items:
+                      type: string
+                  is_tv:
+                    type: boolean
+                  review_count:
+                    type: integer
+                  comment_count:
+                    type: integer
+                  trailers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        video_url:
+                          type: string
+                        cover_url:
+                          type: string
+
+                required:
+                - id
+                - title
+                - actors
+  /rexxar/api/v2/movie/{id}/interests:
+    get:
+      operationId: getMovieReviews
+      summary: "Get user reviews for a movie — reviewer name, rating, comment text, vote count, date"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getMovieReviews
+        build:
+          stable_id: movie_reviews_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban movie subject ID"
+        example: 1292052
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of reviews to return (default 10)"
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset"
+        example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  interests:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        comment:
+                          type: string
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            max:
+                              type: integer
+                            value:
+                              type: number
+                            star_count:
+                              type: number
+                        create_time:
+                          type: string
+                        vote_count:
+                          type: integer
+                        user:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            uid:
+                              type: string
+                            avatar:
+                              type: string
+                        status:
+                          type: string
+                        ip_location:
+                          type: string
+
+                required:
+                - interests
+  /rexxar/api/v2/movie/{id}/celebrities:
+    get:
+      operationId: getMovieCelebrities
+      summary: "Get cast and crew for a movie — directors, actors with name, latin name, avatar, character role"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getMovieCelebrities
+        build:
+          stable_id: movie_celebrities_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban movie subject ID"
+        example: 1292052
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  directors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        latin_name:
+                          type: string
+                        character:
+                          type: string
+                        roles:
+                          type: array
+                          items:
+                            type: string
+                        avatar:
+                          type: object
+                          properties:
+                            large:
+                              type: string
+                  actors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        latin_name:
+                          type: string
+                        character:
+                          type: string
+                        roles:
+                          type: array
+                          items:
+                            type: string
+                        avatar:
+                          type: object
+                          properties:
+                            large:
+                              type: string
+
+                required:
+                - actors
+  /rexxar/api/v2/movie/{id}/photos:
+    get:
+      operationId: getMoviePhotos
+      summary: "Get movie photo gallery — stills, posters, behind the scenes images with dimensions"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getMoviePhotos
+        build:
+          stable_id: db0004
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban movie subject ID"
+        example: 1292052
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of photos to return (default 20)"
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset"
+        example: 0
+      responses:
+        "200":
+          description: Photo gallery for the movie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  photos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        image:
+                          type: object
+                          properties:
+                            large:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                width:
+                                  type: integer
+                                height:
+                                  type: integer
+                            normal:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                width:
+                                  type: integer
+                                height:
+                                  type: integer
+                        description:
+                          type: string
+                        create_time:
+                          type: string
+                        comments_count:
+                          type: integer
+                        likers_count:
+                          type: integer
+
+                required:
+                - photos
+  /rexxar/api/v2/subject_collection/movie_top250/items:
+    get:
+      operationId: getTop250
+      summary: "Get Douban Top 250 movies — rank, title, rating, cover, paginated by 25"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getTop250
+        build:
+          stable_id: db0005
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+        description: "Pagination offset (0, 25, 50, ...). Each page returns 25 movies."
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 25
+        description: "Number of movies per page (default 25)"
+      responses:
+        "200":
+          description: Top 250 movies page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  subject_collection:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  subject_collection_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        rank:
+                          type: integer
+                        rank_value:
+                          type: integer
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            count:
+                              type: integer
+                            value:
+                              type: number
+                        cover_url:
+                          type: string
+                        card_subtitle:
+                          type: string
+                        description:
+                          type: string
+                        type:
+                          type: string
+
+  # ── Books ───────────────────────────────────────────────────────────
+
+                required:
+                - subject_collection_items
+  /rexxar/api/v2/search/book:
+    get:
+      operationId: searchBooks
+      summary: "Search books by keyword — returns title, rating, author, publisher, cover for matching books"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: searchBooks
+        build:
+          stable_id: search_book_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Search keyword (e.g., book title, author name)"
+        example: "三体"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of results to return (default 20, max 50)"
+        example: 20
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset (default 0)"
+        example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        target_id:
+                          type: string
+                        target:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            title:
+                              type: string
+                            abstract:
+                              type: string
+                            rating:
+                              type: object
+                              nullable: true
+                              properties:
+                                count:
+                                  type: integer
+                                value:
+                                  type: number
+                            cover_url:
+                              type: string
+                            card_subtitle:
+                              type: string
+                            null_rating_reason:
+                              type: string
+                        target_type:
+                          type: string
+
+                required:
+                - items
+  /rexxar/api/v2/book/{id}:
+    get:
+      operationId: getBook
+      summary: "Get book detail — title, rating, author, publisher, pages, summary, author bio"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getBook
+        build:
+          stable_id: book_detail_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban book subject ID (e.g., 2567698 for Three-Body Problem)"
+        example: 2567698
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  rating:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      max:
+                        type: integer
+                      value:
+                        type: number
+                      star_count:
+                        type: number
+                  subtitle:
+                    type: array
+                    items:
+                      type: string
+                  pubdate:
+                    type: array
+                    items:
+                      type: string
+                  pic:
+                    type: object
+                    properties:
+                      large:
+                        type: string
+                      normal:
+                        type: string
+                  intro:
+                    type: string
+                  author_intro:
+                    type: string
+                  card_subtitle:
+                    type: string
+                  review_count:
+                    type: integer
+
+                required:
+                - id
+                - title
+  /rexxar/api/v2/book/{id}/interests:
+    get:
+      operationId: getBookReviews
+      summary: "Get user reviews for a book — reviewer name, rating, comment text, vote count, date"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getBookReviews
+        build:
+          stable_id: book_reviews_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban book subject ID"
+        example: 2567698
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of reviews to return (default 10)"
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset"
+        example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  interests:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        comment:
+                          type: string
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            max:
+                              type: integer
+                            value:
+                              type: number
+                            star_count:
+                              type: number
+                        create_time:
+                          type: string
+                        vote_count:
+                          type: integer
+                        user:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            uid:
+                              type: string
+                            avatar:
+                              type: string
+                        status:
+                          type: string
+                        ip_location:
+                          type: string
+
+  # ── Music (mobile JSON API) ─────────────────────────────────────────
+
+                required:
+                - interests
+  /rexxar/api/v2/search/music:
+    get:
+      operationId: searchMusic
+      summary: "Search music/albums by keyword — titles, artists, ratings, covers"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: searchMusic
+        build:
+          stable_id: db0009
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Search keyword (e.g., \"周杰伦\", \"Beatles\")"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of results to return (default 20, max 50)"
+        example: 20
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset (default 0)"
+        example: 0
+      responses:
+        "200":
+          description: Music search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        target_id:
+                          type: string
+                        target:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            title:
+                              type: string
+                            rating:
+                              type: object
+                              nullable: true
+                              properties:
+                                count:
+                                  type: integer
+                                value:
+                                  type: number
+                            cover_url:
+                              type: string
+                            card_subtitle:
+                              type: string
+                            null_rating_reason:
+                              type: string
+                        target_type:
+                          type: string
+
+                required:
+                - items
+  /rexxar/api/v2/music/{id}:
+    get:
+      operationId: getMusicDetail
+      summary: "Get album detail — rating, artist, tracklist, genre, release date, publisher"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getMusicDetail
+        build:
+          stable_id: db0010
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: "Douban music subject ID (e.g., 1401853 for Jay Chou's 七里香)"
+        example: 1401853
+      responses:
+        "200":
+          description: Full album detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  rating:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      max:
+                        type: integer
+                      value:
+                        type: number
+                      star_count:
+                        type: number
+                  singer:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                  genres:
+                    type: array
+                    items:
+                      type: string
+                  pubdate:
+                    type: array
+                    items:
+                      type: string
+                  publisher:
+                    type: array
+                    items:
+                      type: string
+                  media:
+                    type: array
+                    items:
+                      type: string
+                  songs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                  intro:
+                    type: string
+                  cover_url:
+                    type: string
+                  pic:
+                    type: object
+                    properties:
+                      large:
+                        type: string
+                      normal:
+                        type: string
+                  card_subtitle:
+                    type: string
+                  review_count:
+                    type: integer
+                  comment_count:
+                    type: integer
+
+  # ── Trending / Discovery ────────────────────────────────────────────
+
+                required:
+                - id
+                - title
+  /rexxar/api/v2/subject/recent_hot/movie:
+    get:
+      operationId: getRecentHotMovies
+      summary: "Get currently trending movies — title, rating, cover, year, genres for popular films"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getRecentHotMovies
+        build:
+          stable_id: recent_hot_movie_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of movies to return (default 50)"
+        example: 20
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  total:
+                    type: integer
+                  type:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            count:
+                              type: integer
+                            value:
+                              type: number
+                        pic:
+                          type: object
+                          properties:
+                            large:
+                              type: string
+                        card_subtitle:
+                          type: string
+                        is_new:
+                          type: boolean
+                        type:
+                          type: string
+
+                required:
+                - items
+  /rexxar/api/v2/subject/recent_hot/tv:
+    get:
+      operationId: getRecentHotTv
+      summary: "Get currently trending TV shows — title, rating, cover, year, genres for popular series"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getRecentHotTv
+        build:
+          stable_id: recent_hot_tv_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of TV shows to return (default 50)"
+        example: 20
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  total:
+                    type: integer
+                  type:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            count:
+                              type: integer
+                            value:
+                              type: number
+                        pic:
+                          type: object
+                          properties:
+                            large:
+                              type: string
+                        card_subtitle:
+                          type: string
+                        episodes_info:
+                          type: string
+                        is_new:
+                          type: boolean
+                        type:
+                          type: string
+
+                required:
+                - items
+  /rexxar/api/v2/subject_collection/movie_showing/items:
+    get:
+      operationId: getNowShowingMovies
+      summary: "Get movies currently in theaters — title, rating, cover, release date, directors, actors"
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: douban-read
+          operation: getNowShowingMovies
+        build:
+          stable_id: now_showing_001
+          tool_version: 3
+      parameters:
+      - $ref: '#/components/parameters/Referer'
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Number of movies to return (default 20)"
+        example: 20
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: "Pagination offset"
+        example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  start:
+                    type: integer
+                  total:
+                    type: integer
+                  subject_collection:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  subject_collection_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        year:
+                          type: string
+                        rating:
+                          type: object
+                          nullable: true
+                          properties:
+                            count:
+                              type: integer
+                            value:
+                              type: number
+                        cover:
+                          type: object
+                          properties:
+                            url:
+                              type: string
+                        card_subtitle:
+                          type: string
+                        release_date:
+                          type: string
+                        directors:
+                          type: array
+                          items:
+                            type: string
+                        actors:
+                          type: array
+                          items:
+                            type: string
+                        type:
+                          type: string
+                        null_rating_reason:
+                          type: string
+
+                required:
+                - subject_collection_items
+components:
+  parameters:
+    Referer:
+      name: Referer
+      in: header
+      required: false
+      schema:
+        type: string
+        default: "https://m.douban.com/"

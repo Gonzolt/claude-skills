@@ -1,0 +1,12 @@
+{
+  "operation_id": "getProductDetail",
+  "cases": [
+    {
+      "input": { "slug": "item", "itemId": "5113175776" },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

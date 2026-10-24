@@ -1,0 +1,114 @@
+# TripAdvisor
+
+## Overview
+Travel review and booking platform. Archetype: Travel. Adapter-only site — all data extracted from LD+JSON structured data and DOM on SSR pages.
+
+## Workflows
+
+### Search hotels in a city
+1. `searchLocation(query)` → pick location → `geoId`, `locationSlug`
+2. `searchHotels(geoId, location)` → hotel list with names, ratings, addresses
+
+### Get hotel detail
+1. `searchLocation(query)` → `geoId`
+2. `searchHotels(geoId, location)` → pick hotel → extract `locationId` and `slug` from URL
+3. `getHotelDetail(geoId, locationId, slug)` → name, rating, amenities, star rating, price range, check-in/out
+
+### Search restaurants in a city
+1. `searchLocation(query)` → pick location → `geoId`, `locationSlug`
+2. `searchRestaurants(geoId, location)` → restaurant list with names, ratings, cuisine, price range
+
+### Get restaurant detail
+1. `searchLocation(query)` → `geoId`
+2. `getRestaurant(geoId, locationId, slug)` → name, cuisine, rating, hours, address, menu URL
+
+### Get attraction detail
+1. `searchLocation(query)` → `geoId`
+2. `getAttractionDetail(geoId, locationId, slug)` → name, rating, description, hours, address
+
+### Read attraction reviews
+1. `searchLocation(query)` → `geoId`
+2. `getAttractionReviews(geoId, locationId, slug)` → attraction info + review titles, text, dates
+
+## Operations
+
+| Operation | Intent | Key Input | Key Output | Notes |
+|-----------|--------|-----------|------------|-------|
+| searchLocation | find geoId for a city/region | query | geoId, locationSlug, type | entry point; uses TypeAheadJson API |
+| searchHotels | list hotels in a city | geoId ← searchLocation, location ← locationSlug | name, rating, reviewCount, priceRange, address | LD+JSON `ItemList`/`Hotel`/`LodgingBusiness` + DOM fallback |
+| getHotelDetail | hotel detail page | geoId ← searchLocation, locationId, slug | name, rating, amenities, starRating, priceRange, checkin/out | LD+JSON `Hotel`/`LodgingBusiness` |
+| searchRestaurants | list restaurants in a city | geoId ← searchLocation, location ← locationSlug | name, rating, cuisine, priceRange, address | LD+JSON `ItemList`/`Restaurant` + DOM fallback |
+| getRestaurant | restaurant detail | geoId ← searchLocation, locationId, slug | name, cuisine, rating, reviewCount, hours, menuUrl | LD+JSON `Restaurant`/`FoodEstablishment`/`LocalBusiness` |
+| getAttractionDetail | attraction detail page | geoId ← searchLocation, locationId, slug | name, description, rating, hours, address | LD+JSON `TouristAttraction`/`LocalBusiness` |
+| getAttractionReviews | attraction info + reviews | geoId ← searchLocation, locationId, slug | name, rating, reviewCount, reviews[] | LD+JSON + DOM `[data-reviewid]`/`[data-test-target]` |
+
+**Parameter format:**
+- `geoId` — TripAdvisor numeric geo ID (e.g. `60763` = New York City, `187147` = Paris)
+- `locationId` — numeric ID from the URL (e.g. `d457808` → `457808`)
+- `location` / `slug` — URL path segment (e.g. `New_York_City_New_York`, `Le_Bernardin-New_York_City_New_York`)
+
+## Quick Start
+
+```bash
+# Find geoId for a city
+openweb tripadvisor exec searchLocation '{"query":"Tokyo"}'
+
+# Search hotels (use geoId and locationSlug from searchLocation)
+openweb tripadvisor exec searchHotels '{"geoId":"298184","location":"Tokyo_Tokyo_Prefecture_Kanto"}'
+
+# Get hotel detail
+openweb tripadvisor exec getHotelDetail '{"geoId":"60763","locationId":"93450","slug":"The_Plaza-New_York_City_New_York"}'
+
+# Search restaurants
+openweb tripadvisor exec searchRestaurants '{"geoId":"60763","location":"New_York_City_New_York"}'
+
+# Get restaurant detail
+openweb tripadvisor exec getRestaurant '{"geoId":"60763","locationId":"457808","slug":"Le_Bernardin-New_York_City_New_York"}'
+
+# Get attraction detail
+openweb tripadvisor exec getAttractionDetail '{"geoId":"60763","locationId":"104365","slug":"Statue_of_Liberty-New_York_City_New_York"}'
+
+# Get attraction reviews
+openweb tripadvisor exec getAttractionReviews '{"geoId":"60763","locationId":"104365","slug":"Statue_of_Liberty-New_York_City_New_York"}'
+```
+
+---
+
+## Site Internals
+
+### API Architecture
+TripAdvisor embeds rich LD+JSON structured data in SSR HTML pages:
+- Hotel search pages: `ItemList` with `Hotel` items (name, rating, address, priceRange)
+- Hotel detail pages: `Hotel`/`LodgingBusiness` (name, rating, amenities, starRating, checkin/out)
+- Restaurant search pages: `ItemList` with `Restaurant` items (name, cuisine, rating, priceRange)
+- Restaurant detail pages: `FoodEstablishment` (name, cuisine, hours, rating, address)
+- Attraction detail pages: `TouristAttraction`/`LocalBusiness` (name, rating, description, hours, address)
+- Attraction review pages: `LocalBusiness` (name, rating, address) + DOM review cards
+- DataDome bot protection blocks all direct HTTP/fetch — requires real browser
+
+### Auth
+No auth required. All operations read public data.
+
+### Transport
+Page transport (real Chrome via CDP). DataDome blocks node transport entirely.
+**Hybrid**: 6 of 7 ops use spec `x-openweb.extraction` (`page_global_data` reading LD+JSON `<script type="application/ld+json">` with DOM fallbacks). `searchLocation` stays on the thin `tripadvisor` adapter because it calls the TypeAheadJson endpoint via in-page `fetch()` — DataDome rejects programmatic fetches initiated outside of a navigated page context, and the page itself doesn't expose the typeahead results in any global.
+
+### Extraction
+- `searchHotels` → `page_global_data`: LD+JSON `ItemList` → `Hotel`/`LodgingBusiness`, DOM `[data-automation="hotel-card-title"]` fallback
+- `getHotelDetail` → `page_global_data`: LD+JSON `Hotel`/`LodgingBusiness` (amenityFeature, starRating, checkin/out)
+- `searchRestaurants` → `page_global_data`: LD+JSON `ItemList` → `Restaurant`, DOM `a[href*="Restaurant_Review"]` fallback
+- `getRestaurant` → `page_global_data`: LD+JSON `Restaurant`/`FoodEstablishment`/`LocalBusiness`
+- `getAttractionDetail` → `page_global_data`: LD+JSON `TouristAttraction`/`LocalBusiness`
+- `getAttractionReviews` → `page_global_data`: LD+JSON for attraction info + DOM `[data-reviewid]`/`[data-test-target="review-title"]`/`[data-automation*="reviewText"]`
+- `searchLocation` → adapter: `page.evaluate(fetch)` to TypeAheadJson, parse geoId/slug from result URLs
+
+### Adapter Patterns
+- Adapter exports a `CustomRunner` (`run(ctx)`) from shared `types/adapter` — the local `CodeAdapter` shim has been removed, along with stub `init()`/`isAuthenticated()` methods.
+- `searchLocation` — uses browser-side `fetch('/TypeAheadJson?...')` with `credentials: 'same-origin'` to inherit DataDome cookies; the response isn't surfaced as a window global so spec extraction can't reach it.
+- The DataDome CAPTCHA gate (`isDataDomeBlocked` + `waitForCaptchaResolution`, polling up to 30s) lives in the `run()` preamble: every op checks the page for a DataDome block and awaits manual resolution before handler dispatch.
+- Param/op errors use `helpers.errors.missingParam(...)` and `helpers.errors.unknownOp(...)` instead of bespoke `throw new Error(...)`.
+
+### Known Issues
+- **DataDome:** Aggressive bot detection on all endpoints. Must use page transport with real Chrome profile. If captcha appears, solve it manually in the headed browser, then retry. The adapter's `run()` preamble polls for DataDome block markers and waits up to 30s for human captcha resolution before dispatching any op.
+- **Review ratings:** Bubble ratings extracted from CSS class `ui_bubble_rating bubble_N` when available.
+- **Selector fragility:** TripAdvisor frequently changes DOM structure. Adapter uses tiered fallbacks (LD+JSON → specific data attributes → generic DOM) to reduce breakage.

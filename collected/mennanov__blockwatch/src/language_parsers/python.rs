@@ -1,0 +1,79 @@
+use crate::language_parsers::{
+    CommentsParser, LanguageParser, LanguageParserImpl, python_style_comments_parser,
+};
+
+/// Returns a [`LanguageParser`] for Python.
+pub(super) fn parser() -> anyhow::Result<impl LanguageParser> {
+    Ok(LanguageParserImpl::new(comments_parser()?))
+}
+
+fn comments_parser() -> anyhow::Result<impl CommentsParser> {
+    let python_language = tree_sitter_python::LANGUAGE.into();
+    let parser = python_style_comments_parser(&python_language, "comment")?;
+    Ok(parser)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Position, language_parsers::Comment};
+
+    #[test]
+    fn parses_comments_correctly() -> anyhow::Result<()> {
+        let mut comments_parser = comments_parser()?;
+
+        let blocks: Vec<Comment> = comments_parser
+            .parse(
+                r#"
+def main():
+    # This is a single line comment
+    print("Hello")  # This is an inline comment
+
+# This is a multi-line
+# comment that spans
+# several lines
+
+value = 42  # Comment after code
+"#,
+            )
+            .collect();
+
+        assert_eq!(
+            blocks,
+            vec![
+                Comment {
+                    position_range: Position::new(3, 5)..Position::new(3, 36),
+                    source_range: 17..48,
+                    comment_text: "  This is a single line comment".to_string()
+                },
+                Comment {
+                    position_range: Position::new(4, 21)..Position::new(4, 48),
+                    source_range: 69..96,
+                    comment_text: "  This is an inline comment".to_string()
+                },
+                Comment {
+                    position_range: Position::new(6, 1)..Position::new(6, 23),
+                    source_range: 98..120,
+                    comment_text: "  This is a multi-line".to_string()
+                },
+                Comment {
+                    position_range: Position::new(7, 1)..Position::new(7, 21),
+                    source_range: 121..141,
+                    comment_text: "  comment that spans".to_string()
+                },
+                Comment {
+                    position_range: Position::new(8, 1)..Position::new(8, 16),
+                    source_range: 142..157,
+                    comment_text: "  several lines".to_string()
+                },
+                Comment {
+                    position_range: Position::new(10, 13)..Position::new(10, 33),
+                    source_range: 171..191,
+                    comment_text: "  Comment after code".to_string()
+                },
+            ]
+        );
+
+        Ok(())
+    }
+}

@@ -1,0 +1,711 @@
+openapi: "3.1.0"
+info:
+  title: Indeed
+  version: "1.0.0"
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: "2026-04-01T18:05:10.904Z"
+    requires_auth: false
+servers:
+- url: https://www.indeed.com
+  x-openweb:
+    transport: page
+paths:
+  /jobs:
+    get:
+      operationId: searchJobs
+      summary: "Search jobs by keyword and location — title, company, salary, snippet, jobkey"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_searchJobs_v2
+          tool_version: 2
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const result = {};
+              const init = window._initialData;
+              if (init) {
+                result.totalJobCount = init.totalJobCount;
+                result.uniqueJobsCount = init.uniqueJobsCount;
+                result.pageNum = init.pageNum;
+              }
+              const pd = window.mosaic && window.mosaic.providerData && window.mosaic.providerData['mosaic-provider-jobcards'];
+              const model = pd && pd.metaData && pd.metaData.mosaicProviderJobCardsModel;
+              if (model && model.results) {
+                result.jobs = model.results.map(r => ({
+                  jobkey: r.jobkey,
+                  title: r.displayTitle || r.title,
+                  company: r.company || r.truncatedCompany,
+                  companyRating: r.companyRating,
+                  companyReviewCount: r.companyReviewCount,
+                  location: r.formattedLocation,
+                  remoteLocation: r.remoteLocation,
+                  salary: r.extractedSalary || r.salarySnippet,
+                  snippet: r.snippet,
+                  formattedRelativeTime: r.formattedRelativeTime,
+                  jobTypes: r.jobTypes,
+                  link: r.link,
+                  indeedApplyEnabled: r.indeedApplyEnabled,
+                  urgentlyHiring: r.urgentlyHiring,
+                  newJob: r.newJob,
+                }));
+              }
+              return result;
+            })()
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Job search query (e.g. \"software engineer\", \"nurse\")."
+      - name: l
+        in: query
+        required: false
+        schema:
+          type: string
+        description: "Location (e.g. \"San Francisco, CA\", \"Remote\")."
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+        description: "Pagination offset (results per page ~15, use 0, 10, 20, ...)."
+      responses:
+        "200":
+          description: Job search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalJobCount:
+                    type: [integer, string, "null"]
+                  uniqueJobsCount:
+                    type: [integer, string, "null"]
+                  pageNum:
+                    type: [integer, string, "null"]
+                  jobs:
+                    type: [array, "null"]
+                    items:
+                      type: object
+                      required: [jobkey, title]
+                      properties:
+                        jobkey:
+                          type: string
+                          description: "Unique job key (use with getJobDetail)."
+                        title:
+                          type: string
+                        company:
+                          type: string
+                        companyRating:
+                          type: number
+                          nullable: true
+                        companyReviewCount:
+                          type: integer
+                          nullable: true
+                        location:
+                          type: string
+                        remoteLocation:
+                          type: boolean
+                        salary:
+                          type: object
+                          nullable: true
+                          description: Extracted salary info.
+                        snippet:
+                          type: string
+                        formattedRelativeTime:
+                          type: string
+                        jobTypes:
+                          type: array
+                          items:
+                            type: string
+                        link:
+                          type: string
+                        indeedApplyEnabled:
+                          type: boolean
+                        urgentlyHiring:
+                          type: boolean
+                        newJob:
+                          type: boolean
+  /viewjob:
+    get:
+      operationId: getJobDetail
+      summary: "Get full job posting — title, description, salary, benefits, company info from LD+JSON"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_getJobDetail_v2
+          tool_version: 2
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const result = {};
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const data = JSON.parse(s.textContent || '');
+                  if (data['@type'] === 'JobPosting') {
+                    result.title = data.title;
+                    result.description = data.description;
+                    result.datePosted = data.datePosted;
+                    result.baseSalary = data.baseSalary;
+                    result.employmentType = data.employmentType;
+                    result.hiringOrganization = data.hiringOrganization;
+                    result.jobLocation = data.jobLocation;
+                    result.directApply = data.directApply;
+                  }
+                } catch (e) {}
+              }
+              const init = window._initialData;
+              if (init) {
+                result.jobKey = init.jobKey;
+                if (!result.title) result.title = init.jobTitle;
+                result.jobLocation = result.jobLocation || init.jobLocation;
+                result.salaryInfoModel = init.salaryInfoModel;
+                result.benefitsModel = init.benefitsModel;
+                result.hiringInsightsModel = init.hiringInsightsModel;
+                result.companyInfo = init.companyTabModel;
+              }
+              return result;
+            })()
+      parameters:
+      - name: jk
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Job key from searchJobs results."
+      responses:
+        "200":
+          description: Full job posting details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobKey:
+                    type: [string, object, "null"]
+                  title:
+                    type: [string, object, "null"]
+                  description:
+                    type: [string, "null"]
+                    description: Full HTML job description.
+                  datePosted:
+                    type: [string, "null"]
+                  baseSalary:
+                    type: [object, 'null']
+                    properties:
+                      currency:
+                        type: string
+                      value:
+                        type: object
+                        properties:
+                          minValue:
+                            type: number
+                          maxValue:
+                            type: number
+                          unitText:
+                            type: string
+                  employmentType:
+                    type: [array, "null"]
+                    items:
+                      type: string
+                    description: Employment types (e.g. "FULL_TIME").
+                  hiringOrganization:
+                    type: [object, "null"]
+                    properties:
+                      name:
+                        type: string
+                      sameAs:
+                        type: string
+                  jobLocation:
+                    type: [object, array, "null"]
+                    description: Location object with address.
+                  salaryInfoModel:
+                    type: [object, "null"]
+                    description: Indeed-specific salary model from _initialData.
+                  benefitsModel:
+                    type: [object, "null"]
+                    description: Benefits information.
+                  hiringInsightsModel:
+                    type: [object, "null"]
+                    description: Hiring insights (response rate, urgency).
+                  companyInfo:
+                    type: object
+                    nullable: true
+                    description: Company info from _initialData.
+                  directApply:
+                    type: boolean
+                    description: Whether direct apply is available.
+  /career/{title}/salaries:
+    get:
+      operationId: getSalary
+      summary: "Get salary data for a job title — median, range, top cities, top companies, related titles"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_getSalary_v2
+          tool_version: 2
+        adapter:
+          name: indeed-web
+          operation: getSalary
+      parameters:
+      - name: title
+        in: path
+        required: true
+        schema:
+          type: string
+        description: "Job title (e.g. \"software engineer\", \"data scientist\")."
+      - name: location
+        in: query
+        required: false
+        schema:
+          type: string
+        description: "Location URL segment (e.g. \"San-Francisco--CA\"). Use autocompleteLocation."
+      responses:
+        "200":
+          description: Salary data from Next.js __NEXT_DATA__.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  titleInfo:
+                    type: object
+                    properties:
+                      normTitle:
+                        type: string
+                      displayTitle:
+                        type: string
+                  locationInfo:
+                    type: object
+                    description: Location metadata.
+                  nationalSalaryAggregate:
+                    type: object
+                    description: "Salary data by period (HOURLY, YEARLY) with median, min, max."
+                  localSalaryAggregate:
+                    type: object
+                    description: "Location-specific salary (null if no location)."
+                    nullable: true
+                  topPaidCities:
+                    type: object
+                    description: Highest-paying cities for this role.
+                  topPayingCompanies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        salary:
+                          type: object
+                  relatedTitlesResponse:
+                    type: object
+                    description: Related job titles with salary data.
+
+                required:
+                - titleInfo
+  /cmp/{company}:
+    get:
+      operationId: getCompanyOverview
+      summary: "Get company overview — ratings, about, salaries, jobs, locations, interviews"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_getCompanyOverview_v2
+          tool_version: 2
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const result = {};
+              const init = window._initialData;
+              if (init) {
+                result.companyName = init.companyName;
+                if (init.aboutSectionViewModel) result.about = init.aboutSectionViewModel;
+                if (init.reviewRatingOverallSectionViewModel) result.ratings = init.reviewRatingOverallSectionViewModel;
+                if (init.salarySectionViewModel) result.salaries = init.salarySectionViewModel;
+                if (init.jobsSectionViewModel) result.jobs = init.jobsSectionViewModel;
+                if (init.locationsSectionViewModel) result.locations = init.locationsSectionViewModel;
+                if (init.interviewsSectionViewModel) result.interviews = init.interviewsSectionViewModel;
+                if (init.faqSectionViewModel) result.faq = init.faqSectionViewModel;
+                if (init.similarCompaniesSectionViewModel) result.similarCompanies = init.similarCompaniesSectionViewModel;
+                if (init.companyPageHeader) result.header = init.companyPageHeader;
+              }
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const data = JSON.parse(s.textContent || '');
+                  if (data['@type'] === 'LocalBusiness') result.ldJson = data;
+                } catch (e) {}
+              }
+              return result;
+            })()
+      parameters:
+      - name: company
+        in: path
+        required: true
+        schema:
+          type: string
+        description: "Company slug (e.g. \"Google\", \"Amazon.com\", \"Meta\")."
+      responses:
+        "200":
+          description: Company overview from _initialData.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  companyName:
+                    type: [string, object, "null"]
+                  about:
+                    type: object
+                    description: About section (description, industry, size, revenue).
+                  ratings:
+                    type: object
+                    description: Overall review rating breakdown.
+                  salaries:
+                    type: object
+                    description: Salary summary section.
+                  jobs:
+                    type: object
+                    description: Current job openings.
+                  locations:
+                    type: object
+                    description: Office locations.
+                  interviews:
+                    type: object
+                    description: Interview experience section.
+                  faq:
+                    type: object
+                    description: FAQ section.
+                  similarCompanies:
+                    type: object
+                    description: Similar companies.
+                  header:
+                    type: object
+                    description: Company page header.
+                  ldJson:
+                    type: object
+                    description: LD+JSON LocalBusiness data.
+  /cmp/{company}/reviews:
+    get:
+      operationId: getCompanyReviews
+      summary: "Get company reviews — individual reviews with ratings, pros, cons, job title"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_getCompanyReviews_v2
+          tool_version: 2
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const result = {};
+              const init = window._initialData;
+              if (init) {
+                if (init.reviewsFilters) {
+                  const rc = init.reviewsFilters.reviewsCount;
+                  result.reviewCount = (rc && (rc.totalReviewCount != null ? rc.totalReviewCount : rc.foundReviewCount)) || rc;
+                  result.topics = (init.reviewsFilters.topics || []).map(t => ({
+                    name: t.name, rating: t.rating, count: t.count,
+                  }));
+                }
+                const list = init.reviewsList;
+                if (list) {
+                  result.companyName = list.companyName;
+                  result.reviews = (list.items || []).map(r => ({
+                    title: typeof r.title === 'object' ? (r.title && r.title.text) : r.title,
+                    rating: r.overallRating,
+                    jobTitle: r.jobTitle || null,
+                    location: r.location || null,
+                    date: r.submissionDate,
+                    currentEmployee: r.currentEmployee,
+                    text: typeof r.text === 'object' ? (r.text && r.text.text) : r.text,
+                    compensationRating: r.compensationAndBenefitsRating ? r.compensationAndBenefitsRating.rating : null,
+                    cultureRating: r.cultureAndValuesRating ? r.cultureAndValuesRating.rating : null,
+                    workLifeRating: r.workAndLifeBalanceRating ? r.workAndLifeBalanceRating.rating : null,
+                    managementRating: r.managementRating ? r.managementRating.rating : null,
+                    jobSecurityRating: r.jobSecurityAndAdvancementRating ? r.jobSecurityAndAdvancementRating.rating : null,
+                  }));
+                }
+              }
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const data = JSON.parse(s.textContent || '');
+                  if (data['@type'] === 'EmployerAggregateRating' || data.aggregateRating) {
+                    result.aggregateRating = data.aggregateRating || data;
+                  }
+                } catch (e) {}
+              }
+              return result;
+            })()
+      parameters:
+      - name: company
+        in: path
+        required: true
+        schema:
+          type: string
+        description: "Company slug (e.g. \"Google\", \"Amazon.com\")."
+      - name: filter
+        in: query
+        required: false
+        schema:
+          type: string
+        description: "Filter query (e.g. \"fcountry=US&floc=Mountain+View%2C+CA\")."
+      responses:
+        "200":
+          description: Company reviews from _initialData + LD+JSON.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  companyName:
+                    type: string
+                  reviewCount:
+                    type: [integer, "null"]
+                    description: Total number of reviews.
+                  topics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        rating:
+                          type: number
+                        count:
+                          type: integer
+                    description: Review topics with average ratings.
+                  reviews:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: [string, "null"]
+                        rating:
+                          type: number
+                          description: Overall rating (1-5).
+                        jobTitle:
+                          type: [string, "null"]
+                        location:
+                          type: [string, "null"]
+                        date:
+                          type: [string, "null"]
+                        currentEmployee:
+                          type: boolean
+                        text:
+                          type: [string, "null"]
+                          description: Full review text.
+                        compensationRating:
+                          type: [number, "null"]
+                        cultureRating:
+                          type: [number, "null"]
+                        workLifeRating:
+                          type: [number, "null"]
+                        managementRating:
+                          type: [number, "null"]
+                        jobSecurityRating:
+                          type: [number, "null"]
+                  aggregateRating:
+                    type: object
+                    description: Structured aggregate rating from LD+JSON.
+  /cmp/{company}/salaries:
+    get:
+      operationId: getCompanySalaries
+      summary: "Get salaries at a company — job titles with salary data"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_getCompanySalaries_v2
+          tool_version: 2
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const result = {};
+              const init = window._initialData;
+              if (init) {
+                result.companyName = init.companyName;
+                if (init.salaryHeader) {
+                  result.totalSalaryCount = init.salaryHeader.totalSalaryCount;
+                  result.lastUpdated = init.salaryHeader.formattedLastUpdateDate;
+                }
+                const cats = init.categorySalarySection;
+                if (cats && cats.categories) {
+                  result.categories = cats.categories.map(c => ({
+                    categoryTitle: c.categoryTitle,
+                    salaries: (c.salaries || []).map(s => ({
+                      jobTitle: s.title,
+                      salary: s.salary,
+                      salaryType: s.salaryType,
+                      reportedCount: s.reportedSalaryCount,
+                    })),
+                  }));
+                }
+                const popular = init.salaryPopularJobsSection;
+                if (popular && popular.popularJobTitles) {
+                  result.popularJobs = popular.popularJobTitles.map(j => ({
+                    jobTitle: j.jobTitle,
+                    salary: j.formattedMedian,
+                    salaryPeriod: j.salaryPeriod,
+                  }));
+                }
+                if (init.salarySatisfactionSidebarWidget) {
+                  result.satisfaction = {
+                    totalCount: init.salarySatisfactionSidebarWidget.totalCount,
+                    yesRatio: init.salarySatisfactionSidebarWidget.yesRatio,
+                  };
+                }
+              }
+              return result;
+            })()
+      parameters:
+      - name: company
+        in: path
+        required: true
+        schema:
+          type: string
+        description: "Company slug (e.g. \"Google\", \"Amazon.com\")."
+      responses:
+        "200":
+          description: Company salary data from _initialData.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  companyName:
+                    type: [string, object, "null"]
+                  totalSalaryCount:
+                    type: integer
+                    description: Total number of salary reports.
+                  lastUpdated:
+                    type: string
+                    description: Last update date.
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryTitle:
+                          type: string
+                          description: "Category name (e.g. \"Popular Roles\", \"Software Development\")."
+                        salaries:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              jobTitle:
+                                type: string
+                              salary:
+                                type: string
+                                description: "Formatted salary (e.g. \"$163,862\")."
+                              salaryType:
+                                type: string
+                                description: "Period (e.g. \"YEARLY\", \"HOURLY\")."
+                              reportedCount:
+                                type: integer
+                                description: Number of salary reports.
+                    description: Salary data grouped by category.
+                  popularJobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobTitle:
+                          type: string
+                        salary:
+                          type: string
+                          description: Formatted median salary.
+                        salaryPeriod:
+                          type: string
+                    description: Popular job titles with median salary.
+                  satisfaction:
+                    type: object
+                    properties:
+                      totalCount:
+                        type: integer
+                      yesRatio:
+                        type: number
+                    description: Salary satisfaction survey results.
+
+  /autocomplete/job-title:
+    get:
+      operationId: autocompleteJobTitle
+      summary: "Autocomplete job title suggestions — normalized job titles as you type"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_autocompleteJobTitle_v2
+          tool_version: 2
+        adapter:
+          name: indeed-web
+          operation: autocompleteJobTitle
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Partial job title query (e.g. \"softw\", \"data sci\")."
+      - name: country
+        in: query
+        required: false
+        schema:
+          type: string
+          default: US
+        description: "Country code (e.g. \"US\", \"GB\", \"CA\")."
+      responses:
+        "200":
+          description: Job title suggestions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /autocomplete/location:
+    get:
+      operationId: autocompleteLocation
+      summary: "Autocomplete location suggestions — city/state/country as you type"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: indeed_autocompleteLocation_v2
+          tool_version: 2
+        adapter:
+          name: indeed-web
+          operation: autocompleteLocation
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Partial location query (e.g. \"San Fran\", \"New Y\")."
+      - name: country
+        in: query
+        required: false
+        schema:
+          type: string
+          default: US
+        description: "Country code (e.g. \"US\", \"GB\", \"CA\")."
+      responses:
+        "200":
+          description: Location suggestions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string

@@ -1,0 +1,28 @@
+Callimachus
+Copyright 2026 Ari Shaller
+
+Dual-licensed. Released under the GNU Affero General Public License v3.0 or later
+(the "License"); see the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.html.
+Commercial licenses are available separately — see COMMERCIAL.md.
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+
+This product bundles or depends on open-source software, each under its own
+license. Notable components:
+
+- Tauri (tauri-apps)            — Apache-2.0 / MIT
+- fastembed-rs (Anush008)       — Apache-2.0
+- sqlite-vec (asg017)           — Apache-2.0 / MIT
+- rust-genai (jeremychone)      — Apache-2.0 / MIT
+- React, Vite, Tailwind CSS     — MIT
+- SQLite (bundled via rusqlite) — Public Domain
+
+The embedding model (BAAI bge-small-en-v1.5) is downloaded at runtime under its
+own license.
+
+The "Callimachus" name and the logo / brand assets in assets/brand/ are
+© 2026 Ari Shaller. The AGPL-3.0 license (and any commercial license) covers the
+source code; neither grants rights to the project name or logos — those marks are
+reserved.

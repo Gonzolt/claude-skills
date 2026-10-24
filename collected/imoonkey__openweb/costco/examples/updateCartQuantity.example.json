@@ -1,0 +1,13 @@
+{
+  "operation_id": "updateCartQuantity",
+  "replay_safety": "unsafe_mutation",
+  "order": 2,
+  "cases": [
+    {
+      "input": { "orderItemId": "${prev.addToCart.orderItemId}", "quantity": 2 },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

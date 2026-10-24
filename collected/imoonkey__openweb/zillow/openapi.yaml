@@ -1,0 +1,919 @@
+openapi: 3.1.0
+info:
+  title: zillow
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-06T02:38:30.184Z
+    requires_auth: false
+    extraction_signals:
+      - type: ssr_next_data
+        selector: script#__NEXT_DATA__
+        estimatedSize: 418347
+servers:
+  - url: https://www.zillow.com
+    x-openweb:
+      transport: page
+      page_plan:
+        warm: true
+      auth:
+        type: cookie_session
+paths:
+  /async-create-search-page-state:
+    put:
+      operationId: searchProperties
+      summary: >-
+        Search properties for sale — address, price, beds, baths, sqft,
+        zestimate, lat/lng, photos, days on Zillow
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 0ff38e575b19dcfb
+          tool_version: 2
+          verified: true
+          signals:
+            - page-verified
+        adapter:
+          name: zillow-detail
+          operation: searchProperties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                searchQueryState:
+                  type: object
+                  description: Search parameters
+                  properties:
+                    pagination:
+                      type: object
+                      description: Pagination state (empty for first page)
+                    isMapVisible:
+                      type: boolean
+                      description: Whether map view is active.
+                    mapBounds:
+                      type: object
+                      description: Geographic bounding box for search area
+                      properties:
+                        north:
+                          type: number
+                          description: North latitude boundary
+                        south:
+                          type: number
+                          description: South latitude boundary
+                        east:
+                          type: number
+                          description: East longitude boundary
+                        west:
+                          type: number
+                          description: West longitude boundary
+                      required:
+                        - north
+                        - south
+                        - east
+                        - west
+                    filterState:
+                      type: object
+                      description: Search filters
+                      properties:
+                        sortSelection:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                              description: "Sort order: globalrelevanceex, days, pricea, priced"
+                        isAllHomes:
+                          type: object
+                          properties:
+                            value:
+                              type: boolean
+                        price:
+                          type: object
+                          description: Price range filter
+                          properties:
+                            min:
+                              type: integer
+                            max:
+                              type: integer
+                        beds:
+                          type: object
+                          description: Minimum bedrooms filter
+                          properties:
+                            min:
+                              type: integer
+                    isListVisible:
+                      type: boolean
+                      description: Whether list view is active.
+                    regionSelection:
+                      type: array
+                      description: Region identifiers (from autocomplete or known region IDs)
+                      items:
+                        type: object
+                        properties:
+                          regionId:
+                            type: integer
+                            description: "Zillow region ID (e.g., 20330=San Francisco, 12447=Los Angeles, 16037=Seattle)"
+                          regionType:
+                            type: integer
+                            description: "Region type (6=city)"
+                        required:
+                          - regionId
+                          - regionType
+                    category:
+                      type: string
+                      description: "Search category (cat1=for sale, cat2=for rent)"
+                  required:
+                    - mapBounds
+                    - regionSelection
+                    - category
+                wants:
+                  type: object
+                  description: Response sections to include
+                  properties:
+                    cat1:
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - listResults
+                          - mapResults
+                  required:
+                    - cat1
+                requestId:
+                  type: integer
+                  description: Request counter (increment per call).
+                isDebugRequest:
+                  type: boolean
+                  description: Enable debug output in response.
+              required:
+                - searchQueryState
+                - wants
+      responses:
+        "200":
+          description: Search results with property listings and map data.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cat1]
+                properties:
+                  user:
+                    type: object
+                    description: Current user state.
+                    properties:
+                      isLoggedIn:
+                        type: boolean
+                        description: Whether the user has an active Zillow session.
+                  regionState:
+                    type: object
+                    description: Resolved region metadata for the search area.
+                    properties:
+                      regionInfo:
+                        type: array
+                        description: Matched regions from the search query.
+                        items:
+                          type: object
+                          description: A matched region.
+                          required: [regionId, regionType]
+                          properties:
+                            regionId:
+                              type: integer
+                              description: Zillow region ID.
+                            regionType:
+                              type: integer
+                              description: Region type code.
+                            regionName:
+                              type: string
+                              description: Short region name (e.g. "San Francisco").
+                            displayName:
+                              type: string
+                              description: Full display name (e.g. "San Francisco, CA").
+                            isPointRegion:
+                              type: boolean
+                              description: Whether this is a point (address) vs area region.
+                      regionBounds:
+                        type: object
+                        description: Geographic bounding box of the resolved region.
+                        properties:
+                          north:
+                            type: number
+                            description: North latitude boundary.
+                          south:
+                            type: number
+                            description: South latitude boundary.
+                          east:
+                            type: number
+                            description: East longitude boundary.
+                          west:
+                            type: number
+                            description: West longitude boundary.
+                  cat1:
+                    type: object
+                    description: Search results container.
+                    required: [searchResults]
+                    properties:
+                      searchResults:
+                        type: object
+                        description: Property search results.
+                        required: [listResults]
+                        properties:
+                          listResults:
+                            type: array
+                            description: Property listings with full details.
+                            items:
+                              type: object
+                              description: A property listing result.
+                              required: [zpid, detailUrl, address, latLong]
+                              properties:
+                                zpid:
+                                  type: string
+                                  description: Zillow property ID
+                                detailUrl:
+                                  type: string
+                                  format: uri
+                                  description: Property detail page URL
+                                statusType:
+                                  type: string
+                                  description: "Listing status (FOR_SALE, RECENTLY_SOLD, etc.)"
+                                statusText:
+                                  type: string
+                                  description: Human-readable listing status text.
+                                price:
+                                  type: string
+                                  description: Formatted price string
+                                unformattedPrice:
+                                  type: integer
+                                  description: Price in cents-free integer (e.g., 1395000)
+                                address:
+                                  type: string
+                                  description: Full address
+                                addressStreet:
+                                  type: string
+                                  description: Street address portion.
+                                addressCity:
+                                  type: string
+                                  description: City name.
+                                addressState:
+                                  type: string
+                                  description: State abbreviation.
+                                addressZipcode:
+                                  type: string
+                                  description: ZIP code.
+                                beds:
+                                  type: integer
+                                  description: Number of bedrooms.
+                                baths:
+                                  type: integer
+                                  description: Number of bathrooms.
+                                area:
+                                  type: integer
+                                  description: Living area in sqft
+                                latLong:
+                                  type: object
+                                  description: Geographic coordinates.
+                                  required: [latitude, longitude]
+                                  properties:
+                                    latitude:
+                                      type: number
+                                      description: Latitude.
+                                    longitude:
+                                      type: number
+                                      description: Longitude.
+                                imgSrc:
+                                  type: string
+                                  format: uri
+                                  description: Primary listing photo URL
+                                zestimate:
+                                  type: integer
+                                  description: Zillow estimated value
+                                hdpData:
+                                  type: object
+                                  description: Home data point — extended property info.
+                                  properties:
+                                    homeInfo:
+                                      type: object
+                                      description: Detailed home information.
+                                      properties:
+                                        zpid:
+                                          type: integer
+                                          description: Zillow property ID.
+                                        streetAddress:
+                                          type: string
+                                          description: Street address.
+                                        zipcode:
+                                          type: string
+                                          description: ZIP code.
+                                        city:
+                                          type: string
+                                          description: City name.
+                                        state:
+                                          type: string
+                                          description: State abbreviation.
+                                        price:
+                                          type: integer
+                                          description: Listing price.
+                                        bathrooms:
+                                          type: integer
+                                          description: Number of bathrooms.
+                                        bedrooms:
+                                          type: integer
+                                          description: Number of bedrooms.
+                                        livingArea:
+                                          type: integer
+                                          description: Living area in sqft.
+                                        homeType:
+                                          type: string
+                                          description: "SINGLE_FAMILY, CONDO, MULTI_FAMILY, TOWNHOUSE, etc."
+                                        homeStatus:
+                                          type: string
+                                          description: "FOR_SALE, RECENTLY_SOLD, etc."
+                                        daysOnZillow:
+                                          type: integer
+                                          description: Days listed on Zillow.
+                                        zestimate:
+                                          type: integer
+                                          description: Zillow estimated value.
+                                        rentZestimate:
+                                          type: integer
+                                          description: Zillow estimated rental value.
+                                        taxAssessedValue:
+                                          type: integer
+                                          description: Tax-assessed value.
+                                        lotAreaValue:
+                                          type: number
+                                          description: Lot area numeric value.
+                                        lotAreaUnit:
+                                          type: string
+                                          description: Lot area unit (e.g. "sqft", "acres").
+                                has3DModel:
+                                  type: boolean
+                                  description: Whether a 3D tour is available.
+                                hasVideo:
+                                  type: boolean
+                                  description: Whether a video tour is available.
+                                isFeaturedListing:
+                                  type: boolean
+                                  description: Whether this is a featured/promoted listing.
+                                buildingName:
+                                  type: string
+                                  description: Building name (rental listings only).
+                                minBaseRent:
+                                  type: integer
+                                  description: Minimum base rent in dollars (rental listings only).
+                                maxBaseRent:
+                                  type: integer
+                                  description: Maximum base rent in dollars (rental listings only).
+                                availabilityCount:
+                                  type: integer
+                                  description: Number of available units (rental listings only).
+                                units:
+                                  type: array
+                                  description: Available unit types with pricing (rental listings only).
+                                  items:
+                                    type: object
+                                    properties:
+                                      beds:
+                                        type: string
+                                        description: Number of bedrooms (e.g. "1", "2").
+                                      price:
+                                        type: string
+                                        description: Formatted rent price (e.g. "$756+").
+                          totalResultCount:
+                            type: integer
+                            description: Total number of results matching the search criteria.
+                          mapResults:
+                            type: array
+                            description: Map pin results (minimal data for map rendering).
+                            items:
+                              type: object
+                              description: A map pin result.
+                              required: [zpid]
+                              properties:
+                                zpid:
+                                  type: string
+                                  description: Zillow property ID.
+                                statusType:
+                                  type: string
+                                  description: "Listing status (FOR_SALE, RECENTLY_SOLD, etc.)"
+                                price:
+                                  type: string
+                                  description: Formatted price string.
+                                address:
+                                  type: string
+                                  description: Full address.
+                                beds:
+                                  type: integer
+                                  description: Number of bedrooms.
+                                baths:
+                                  type: integer
+                                  description: Number of bathrooms.
+                                area:
+                                  type: integer
+                                  description: Living area in sqft.
+                                latLong:
+                                  type: object
+                                  description: Geographic coordinates.
+                                  properties:
+                                    latitude:
+                                      type: number
+                                      description: Latitude.
+                                    longitude:
+                                      type: number
+                                      description: Longitude.
+                  requestId:
+                    type: integer
+                    description: Echo of the request counter.
+  /homedetails/{slug}/{zpid}:
+    get:
+      operationId: getPropertyDetail
+      summary: >-
+        Get full property details — address, price, beds, baths, sqft, photos,
+        description, Zestimate, tax history, days on Zillow
+      x-openweb:
+        permission: read
+        build:
+          stable_id: zw_detail_v1
+          tool_version: 2
+          verified: true
+          signals:
+            - page-verified
+        extraction:
+          type: page_global_data
+          page_url: https://www.zillow.com/homedetails/{slug}/{zpid}_zpid/
+          expression: |
+            (() => {
+              const el = document.querySelector('script#__NEXT_DATA__');
+              if (!el || !el.textContent) return null;
+              const nextData = JSON.parse(el.textContent);
+              const cp = nextData?.props?.pageProps?.componentProps;
+              if (!cp?.gdpClientCache) return null;
+              const cache = JSON.parse(cp.gdpClientCache);
+              let p = null;
+              for (const v of Object.values(cache)) {
+                if (v && v.property) { p = v.property; break; }
+              }
+              if (!p) return null;
+              const addr = p.address || null;
+              const resoFacts = p.resoFacts || {};
+              const taxFirst = Array.isArray(p.taxHistory) ? p.taxHistory[0] : null;
+              const photoSource =
+                (Array.isArray(p.responsivePhotos) && p.responsivePhotos.length > 0 && p.responsivePhotos) ||
+                (Array.isArray(p.compsCarouselPropertyPhotos) && p.compsCarouselPropertyPhotos.length > 0 && p.compsCarouselPropertyPhotos) ||
+                (Array.isArray(p.thumb) && p.thumb) ||
+                [];
+              const photos = photoSource.slice(0, 10).map((ph) => {
+                const ms = ph.mixedSources ?? {};
+                const jpegs = ms.jpeg ?? ms.webp ?? [];
+                if (Array.isArray(jpegs) && jpegs.length > 0) {
+                  const best = jpegs.reduce((a, b) => ((b.width ?? 0) > (a.width ?? 0) ? b : a));
+                  return best.url ?? null;
+                }
+                return typeof ph === 'string' ? ph : (ph.url ?? null);
+              });
+              return {
+                zpid: p.zpid ?? null,
+                address: addr ? {
+                  streetAddress: addr.streetAddress ?? null,
+                  city: addr.city ?? null,
+                  state: addr.state ?? null,
+                  zipcode: addr.zipcode ?? null,
+                } : null,
+                price: p.price ?? null,
+                bedrooms: p.bedrooms ?? resoFacts.bedrooms ?? null,
+                bathrooms: p.bathrooms ?? resoFacts.bathrooms ?? null,
+                livingArea: p.livingAreaValue ?? resoFacts.livingArea ?? null,
+                livingAreaUnits: p.livingAreaUnitsShort ?? p.livingAreaUnits ?? 'sqft',
+                lotSize: p.lotAreaValue ?? resoFacts.lotSize ?? null,
+                homeType: p.homeType ?? null,
+                homeStatus: p.homeStatus ?? null,
+                yearBuilt: resoFacts.yearBuilt ?? null,
+                description: p.description ? p.description.slice(0, 4000) : null,
+                zestimate: p.zestimate ?? null,
+                rentZestimate: p.rentZestimate ?? null,
+                taxAssessedValue: (taxFirst && taxFirst.value) ?? null,
+                daysOnZillow: p.daysOnZillow ?? null,
+                pageViewCount: null,
+                favoriteCount: null,
+                photos,
+                url: 'https://www.zillow.com' + (p.hdpUrl || ('/homedetails/_/' + p.zpid + '_zpid/')),
+              };
+            })()
+      parameters:
+        - name: zpid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Zillow Property ID (numeric string, e.g. "2077416986")
+          example: "15076238"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            default: _
+          description: URL slug (e.g. "123-Main-St-Seattle-WA-98101"). Use "_" if unknown.
+          example: 1000-Fell-St-San-Francisco-CA-94117
+      responses:
+        "200":
+          description: Property details extracted from __NEXT_DATA__.
+          content:
+            application/json:
+              schema:
+                type: [object, "null"]
+                required: [zpid]
+                properties:
+                  zpid:
+                    type: [integer, "null"]
+                    description: Zillow property ID
+                  address:
+                    type: [object, "null"]
+                    description: Structured property address.
+                    properties:
+                      streetAddress:
+                        type: [string, "null"]
+                        description: Street address line.
+                      city:
+                        type: [string, "null"]
+                        description: City name.
+                      state:
+                        type: [string, "null"]
+                        description: State abbreviation.
+                      zipcode:
+                        type: [string, "null"]
+                        description: ZIP code.
+                  price:
+                    type: [integer, "null"]
+                    description: Current listing or last sold price
+                  bedrooms:
+                    type: [integer, "null"]
+                    description: Number of bedrooms.
+                  bathrooms:
+                    type: [number, "null"]
+                    description: Number of bathrooms (may be fractional, e.g. 2.5).
+                  livingArea:
+                    type: [integer, "null"]
+                    description: Living area in sqft
+                  livingAreaUnits:
+                    type: [string, "null"]
+                    description: Unit of measurement for living area (typically "Square Feet").
+                  lotSize:
+                    type: [number, "null"]
+                    description: Lot size in sqft.
+                  homeType:
+                    type: [string, "null"]
+                    description: "SINGLE_FAMILY, CONDO, TOWNHOUSE, MULTI_FAMILY, etc."
+                  homeStatus:
+                    type: [string, "null"]
+                    description: "FOR_SALE, RECENTLY_SOLD, etc."
+                  yearBuilt:
+                    type: [integer, "null"]
+                    description: Year the property was built.
+                  description:
+                    type: [string, "null"]
+                    description: Property listing description (truncated to 4000 chars)
+                  zestimate:
+                    type: [integer, "null"]
+                    description: Zillow estimated home value
+                  rentZestimate:
+                    type: [integer, "null"]
+                    description: Zillow estimated rental value
+                  taxAssessedValue:
+                    type: [integer, "null"]
+                    description: Tax-assessed property value.
+                  daysOnZillow:
+                    type: [integer, "null"]
+                    description: Number of days the listing has been on Zillow.
+                  pageViewCount:
+                    type: [integer, "null"]
+                    description: Number of page views for this listing.
+                  favoriteCount:
+                    type: [integer, "null"]
+                    description: Number of times this listing was favorited.
+                  photos:
+                    type: [array, "null"]
+                    description: Up to 10 photo URLs (highest resolution available).
+                    items:
+                      type: [string, "null"]
+                      description: Photo URL string.
+                  url:
+                    type: [string, "null"]
+                    description: Canonical Zillow property URL
+  /zestimate/{slug}/{zpid}:
+    get:
+      operationId: getZestimate
+      summary: >-
+        Get Zillow's home value estimate (Zestimate) — current value, rent
+        estimate, confidence range, tax assessment, recent history
+      x-openweb:
+        permission: read
+        build:
+          stable_id: zw_zestimate_v1
+          tool_version: 2
+          verified: true
+          signals:
+            - page-verified
+        extraction:
+          type: page_global_data
+          page_url: https://www.zillow.com/homedetails/{slug}/{zpid}_zpid/
+          expression: |
+            (() => {
+              const el = document.querySelector('script#__NEXT_DATA__');
+              if (!el || !el.textContent) return null;
+              const nextData = JSON.parse(el.textContent);
+              const cp = nextData?.props?.pageProps?.componentProps;
+              if (!cp?.gdpClientCache) return null;
+              const cache = JSON.parse(cp.gdpClientCache);
+              let p = null;
+              for (const v of Object.values(cache)) {
+                if (v && v.property) { p = v.property; break; }
+              }
+              if (!p) return null;
+              const addr = p.address || null;
+              const taxFirst = Array.isArray(p.taxHistory) ? p.taxHistory[0] : null;
+              return {
+                zpid: p.zpid ?? null,
+                address: addr ? {
+                  streetAddress: addr.streetAddress ?? null,
+                  city: addr.city ?? null,
+                  state: addr.state ?? null,
+                  zipcode: addr.zipcode ?? null,
+                } : null,
+                zestimate: p.zestimate ?? null,
+                rentZestimate: p.rentZestimate ?? null,
+                zestimateLowPercent: p.zestimateLowPercent != null ? Number(p.zestimateLowPercent) : null,
+                zestimateHighPercent: p.zestimateHighPercent != null ? Number(p.zestimateHighPercent) : null,
+                taxAssessedValue: (taxFirst && taxFirst.value) ?? null,
+                taxAssessedYear: (taxFirst && taxFirst.time) ? new Date(taxFirst.time).getFullYear() : null,
+                price: p.price ?? null,
+                homeType: p.homeType ?? null,
+                livingArea: p.livingAreaValue ?? null,
+                bedrooms: p.bedrooms ?? null,
+                bathrooms: p.bathrooms ?? null,
+                zestimateHistory: null,
+              };
+            })()
+      parameters:
+        - name: zpid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Zillow Property ID (numeric string)
+          example: "15076238"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            default: _
+          description: URL slug. Use "_" if unknown.
+          example: 1000-Fell-St-San-Francisco-CA-94117
+      responses:
+        "200":
+          description: Zestimate data with confidence range and history.
+          content:
+            application/json:
+              schema:
+                type: [object, "null"]
+                required: [zpid]
+                properties:
+                  zpid:
+                    type: [integer, "null"]
+                    description: Zillow property ID.
+                  address:
+                    type: [object, "null"]
+                    description: Structured property address.
+                    properties:
+                      streetAddress:
+                        type: [string, "null"]
+                        description: Street address line.
+                      city:
+                        type: [string, "null"]
+                        description: City name.
+                      state:
+                        type: [string, "null"]
+                        description: State abbreviation.
+                      zipcode:
+                        type: [string, "null"]
+                        description: ZIP code.
+                  zestimate:
+                    type: [integer, "null"]
+                    description: Current Zestimate value in dollars
+                  rentZestimate:
+                    type: [integer, "null"]
+                    description: Estimated monthly rent
+                  zestimateLowPercent:
+                    type: [number, "null"]
+                    description: Low-end confidence percentage
+                  zestimateHighPercent:
+                    type: [number, "null"]
+                    description: High-end confidence percentage
+                  taxAssessedValue:
+                    type: [integer, "null"]
+                    description: Tax-assessed property value.
+                  taxAssessedYear:
+                    type: [integer, "null"]
+                    description: Year of the tax assessment.
+                  price:
+                    type: [integer, "null"]
+                    description: Current listing price for comparison
+                  homeType:
+                    type: [string, "null"]
+                    description: "SINGLE_FAMILY, CONDO, TOWNHOUSE, MULTI_FAMILY, etc."
+                  livingArea:
+                    type: [integer, "null"]
+                    description: Living area in sqft.
+                  bedrooms:
+                    type: [integer, "null"]
+                    description: Number of bedrooms.
+                  bathrooms:
+                    type: [number, "null"]
+                    description: Number of bathrooms (may be fractional).
+                  zestimateHistory:
+                    type: [array, "null"]
+                    description: Up to 12 recent Zestimate data points
+                    items:
+                      type: object
+                      description: A historical Zestimate data point.
+                      required: [date, value]
+                      properties:
+                        date:
+                          type: [string, "null"]
+                          description: Date of the Zestimate snapshot.
+                        value:
+                          type: [number, "null"]
+                          description: Zestimate value at that date.
+  /neighborhood/{slug}/{zpid}:
+    get:
+      operationId: getNeighborhood
+      summary: >-
+        Get neighborhood data — schools, walk/transit/bike scores, nearby homes
+      x-openweb:
+        permission: read
+        build:
+          stable_id: zw_neighborhood_v1
+          tool_version: 2
+          verified: true
+          signals:
+            - page-verified
+        extraction:
+          type: page_global_data
+          page_url: https://www.zillow.com/homedetails/{slug}/{zpid}_zpid/
+          expression: |
+            (() => {
+              const el = document.querySelector('script#__NEXT_DATA__');
+              if (!el || !el.textContent) return null;
+              const nextData = JSON.parse(el.textContent);
+              const cp = nextData?.props?.pageProps?.componentProps;
+              if (!cp?.gdpClientCache) return null;
+              const cache = JSON.parse(cp.gdpClientCache);
+              let p = null;
+              for (const v of Object.values(cache)) {
+                if (v && v.property) { p = v.property; break; }
+              }
+              if (!p) return null;
+              const addr = p.address || null;
+              const schools = Array.isArray(p.schools) ? p.schools.slice(0, 10).map((s) => ({
+                name: s.name ?? null,
+                rating: s.rating ?? null,
+                level: s.level ?? s.grades ?? null,
+                type: s.type ?? null,
+                distance: s.distance ?? null,
+                link: s.link ?? null,
+              })) : null;
+              const nearbyHomes = Array.isArray(p.nearbyHomes) ? p.nearbyHomes.slice(0, 10).map((h) => {
+                const a = h.address || null;
+                return {
+                  zpid: h.zpid ?? null,
+                  address: (a && a.streetAddress) ?? null,
+                  price: h.price ?? null,
+                  bedrooms: h.bedrooms ?? null,
+                  bathrooms: h.bathrooms ?? null,
+                  livingArea: h.livingAreaValue ?? h.livingArea ?? null,
+                  homeType: h.homeType ?? null,
+                };
+              }) : null;
+              return {
+                zpid: p.zpid ?? null,
+                address: addr ? {
+                  streetAddress: addr.streetAddress ?? null,
+                  city: addr.city ?? null,
+                  state: addr.state ?? null,
+                  zipcode: addr.zipcode ?? null,
+                } : null,
+                walkScore: null,
+                transitScore: null,
+                bikeScore: null,
+                schools,
+                nearbyHomes,
+              };
+            })()
+      parameters:
+        - name: zpid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Zillow Property ID (numeric string)
+          example: "15076238"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            default: _
+          description: URL slug. Use "_" if unknown.
+          example: 1000-Fell-St-San-Francisco-CA-94117
+      responses:
+        "200":
+          description: Neighborhood data with scores, schools, and nearby homes.
+          content:
+            application/json:
+              schema:
+                type: [object, "null"]
+                required: [zpid]
+                properties:
+                  zpid:
+                    type: [integer, "null"]
+                    description: Zillow property ID.
+                  address:
+                    type: [object, "null"]
+                    description: Structured property address.
+                    properties:
+                      streetAddress:
+                        type: [string, "null"]
+                        description: Street address line.
+                      city:
+                        type: [string, "null"]
+                        description: City name.
+                      state:
+                        type: [string, "null"]
+                        description: State abbreviation.
+                      zipcode:
+                        type: [string, "null"]
+                        description: ZIP code.
+                  walkScore:
+                    type: [integer, "null"]
+                    description: Walk Score (0-100)
+                  transitScore:
+                    type: [integer, "null"]
+                    description: Transit Score (0-100)
+                  bikeScore:
+                    type: [integer, "null"]
+                    description: Bike Score (0-100)
+                  schools:
+                    type: [array, "null"]
+                    description: Nearby schools with ratings
+                    items:
+                      type: object
+                      description: A nearby school with GreatSchools rating.
+                      properties:
+                        name:
+                          type: [string, "null"]
+                          description: School name.
+                        rating:
+                          type: [integer, "null"]
+                          description: GreatSchools rating (1-10)
+                        level:
+                          type: [string, "null"]
+                          description: "elementary, middle, high"
+                        type:
+                          type: [string, "null"]
+                          description: "public, private, charter"
+                        distance:
+                          type: [number, "null"]
+                          description: Distance in miles
+                        link:
+                          type: [string, "null"]
+                          description: GreatSchools profile URL.
+                  nearbyHomes:
+                    type: [array, "null"]
+                    description: Comparable nearby properties
+                    items:
+                      type: object
+                      description: A nearby comparable property.
+                      properties:
+                        zpid:
+                          type: [integer, "null"]
+                          description: Zillow property ID.
+                        address:
+                          type: [string, "null"]
+                          description: Full address string.
+                        price:
+                          type: [integer, "null"]
+                          description: Listing or last sold price.
+                        bedrooms:
+                          type: [integer, "null"]
+                          description: Number of bedrooms.
+                        bathrooms:
+                          type: [number, "null"]
+                          description: Number of bathrooms.
+                        livingArea:
+                          type: [integer, "null"]
+                          description: Living area in sqft.
+                        homeType:
+                          type: [string, "null"]
+                          description: "SINGLE_FAMILY, CONDO, TOWNHOUSE, etc."

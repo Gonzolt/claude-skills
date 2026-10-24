@@ -1,0 +1,19 @@
+{
+  "name": "uber",
+  "display_name": "Uber",
+  "version": "1.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://m.uber.com",
+  "description": "Uber ride services — location search, fare estimates, ride history. GraphQL + adapter, cookie_session auth.",
+  "requires_auth": true,
+  "dependencies": {},
+  "stats": {
+    "operation_count": 3,
+    "l1_count": 0,
+    "l2_count": 0,
+    "l3_count": 0,
+    "ws_count": 0,
+    "adapter_count": 1
+  },
+  "quarantined": false
+}

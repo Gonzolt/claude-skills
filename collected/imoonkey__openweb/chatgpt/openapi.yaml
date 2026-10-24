@@ -1,0 +1,489 @@
+openapi: '3.1.0'
+info:
+  title: ChatGPT API
+  version: '2.0'
+  x-openweb:
+    spec_version: '2.0'
+servers:
+  - url: https://chatgpt.com/backend-api
+    x-openweb:
+      transport: node
+      page_plan:
+        entry_url: https://chatgpt.com/
+      auth:
+        type: exchange_chain
+        steps:
+          - call: https://chatgpt.com/api/auth/session
+            method: GET
+            extract: accessToken
+            headers:
+              User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+        inject:
+          header: Authorization
+          prefix: 'Bearer '
+components:
+  parameters:
+    UserAgent:
+      name: User-Agent
+      in: header
+      required: false
+      schema:
+        type: string
+        default: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+      description: Required for Cloudflare cf_clearance cookie binding.
+paths:
+  /me:
+    get:
+      operationId: getProfile
+      summary: Get authenticated user profile — id, name, email, picture, org membership
+      x-openweb:
+        permission: read
+        adapter:
+          name: chatgpt-api
+          operation: getProfile
+        build:
+          stable_id: cg0001
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - $ref: '#/components/parameters/UserAgent'
+      responses:
+        '200':
+          description: User profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - name
+                  - email
+                properties:
+                  object:
+                    type: string
+                  id:
+                    type: string
+                  email:
+                    type: string
+                    format: email
+                  name:
+                    type: string
+                  picture:
+                    type: string
+                    format: uri
+                  created:
+                    type: integer
+                  phone_number:
+                    type: string
+                  mfa_flag_enabled:
+                    type: boolean
+                  country:
+                    type: string
+                  orgs:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            title:
+                              type: string
+                            personal:
+                              type: boolean
+                            role:
+                              type: string
+  /conversations:
+    get:
+      operationId: listConversations
+      summary: List recent conversations — id, title, create/update time, archived status
+      x-openweb:
+        permission: read
+        adapter:
+          name: chatgpt-api
+          operation: listConversations
+        build:
+          stable_id: cg0002
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+        pagination:
+          type: cursor
+          response_field: cursor
+          request_param: cursor
+          items_path: items
+      parameters:
+        - $ref: '#/components/parameters/UserAgent'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 28
+          description: Number of conversations to return.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Offset for pagination.
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            default: updated
+          description: Sort order (updated or created).
+        - name: is_archived
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: is_starred
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Paginated list of conversations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - total
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - title
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        title:
+                          type: string
+                        create_time:
+                          type: string
+                          format: date-time
+                        update_time:
+                          type: string
+                          format: date-time
+                        is_archived:
+                          type: boolean
+                        is_starred:
+                          type:
+                            - boolean
+                            - 'null'
+                        gizmo_id:
+                          type:
+                            - string
+                            - 'null'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  cursor:
+                    type:
+                      - string
+                      - 'null'
+  /conversation/{conversation_id}:
+    get:
+      operationId: getConversation
+      summary: Get full conversation with message tree — title, mapping (message nodes with author, content, timestamps), current_node
+      x-openweb:
+        permission: read
+        adapter:
+          name: chatgpt-api
+          operation: getConversation
+        build:
+          stable_id: cg0003
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - $ref: '#/components/parameters/UserAgent'
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: UUID of the conversation.
+      responses:
+        '200':
+          description: Full conversation including message tree.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - conversation_id
+                  - title
+                  - mapping
+                  - current_node
+                properties:
+                  conversation_id:
+                    type: string
+                  title:
+                    type: string
+                  create_time:
+                    type: number
+                  update_time:
+                    type: number
+                  current_node:
+                    type: string
+                    description: ID of the latest message node. Walk parent pointers to reconstruct thread.
+                  default_model_slug:
+                    type: string
+                  is_archived:
+                    type: boolean
+                  mapping:
+                    type: object
+                    description: Tree of message nodes keyed by node ID.
+                    additionalProperties:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        parent:
+                          type:
+                            - string
+                            - 'null'
+                        children:
+                          type: array
+                          items:
+                            type: string
+                        message:
+                          type:
+                            - object
+                            - 'null'
+                          properties:
+                            id:
+                              type: string
+                            author:
+                              type: object
+                              properties:
+                                role:
+                                  type: string
+                                  enum:
+                                    - system
+                                    - user
+                                    - assistant
+                                    - tool
+                            create_time:
+                              type:
+                                - number
+                                - 'null'
+                            content:
+                              type: object
+                              properties:
+                                content_type:
+                                  type: string
+                                parts:
+                                  type: array
+                                  items: {}
+                            status:
+                              type: string
+                            weight:
+                              type: number
+  /conversations/search:
+    get:
+      operationId: searchConversations
+      summary: Search past conversations by keyword — returns conversation titles and matched message snippets
+      x-openweb:
+        permission: read
+        adapter:
+          name: chatgpt-api
+          operation: searchConversations
+        build:
+          stable_id: cg0004
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+        pagination:
+          type: cursor
+          response_field: cursor
+          request_param: cursor
+          items_path: items
+      parameters:
+        - $ref: '#/components/parameters/UserAgent'
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search keyword.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination cursor from previous response (numeric offset as string).
+      responses:
+        '200':
+          description: Search results with matching conversations and message snippets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        conversation_id:
+                          type: string
+                        title:
+                          type: string
+                        is_archived:
+                          type: boolean
+                        update_time:
+                          type: number
+                        payload:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            message_id:
+                              type: string
+                            snippet:
+                              type: string
+                              description: Matched message text excerpt.
+                  cursor:
+                    type:
+                      - string
+                      - integer
+                      - 'null'
+                    description: Next page cursor (numeric offset).
+  /models:
+    get:
+      operationId: getModels
+      summary: Get available models — slug, title, description, capabilities, max tokens
+      x-openweb:
+        permission: read
+        adapter:
+          name: chatgpt-api
+          operation: getModels
+        build:
+          stable_id: cg0006
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - $ref: '#/components/parameters/UserAgent'
+        - name: history_and_training_disabled
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Available model list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - models
+                properties:
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug:
+                          type: string
+                          description: Model identifier for sendMessage (e.g. "gpt-4o", "o4-mini").
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        max_tokens:
+                          type: integer
+                        tags:
+                          type: array
+                          items:
+                            type: string
+                        qualitative_properties:
+                          type: object
+  /internal/sendMessage:
+    post:
+      operationId: sendMessage
+      summary: Send a message via the chatgpt.com SPA and return the assembled assistant reply
+      description: |
+        Driven by the `chatgpt-web` adapter. The endpoint
+        `/backend-api/f/conversation` is gated by a per-request Sentinel
+        chat-requirements token and a SHA3-512 proof-of-work challenge
+        bound to the browser fingerprint, so direct HTTP cannot replay it.
+        The adapter types the prompt into the composer and lets the SPA
+        solve the challenge, then intercepts the SSE response off the wire.
+      x-openweb:
+        permission: write
+        transport: page
+        adapter:
+          name: chatgpt-web
+          operation: sendMessage
+        page_plan:
+          entry_url: https://chatgpt.com/
+          ready: '#prompt-textarea'
+        build:
+          stable_id: cg0005
+          tool_version: 2
+          verified: false
+          signals:
+            - adapter-verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+              properties:
+                prompt:
+                  type: string
+                  description: User prompt text. The adapter selects the currently active model and conversation; pass an empty `conversation_id` to start a new chat (default).
+      responses:
+        '200':
+          description: Assembled reply plus the new conversation id.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - conversation_id
+                  - response_text
+                properties:
+                  conversation_id:
+                    type:
+                      - string
+                      - 'null'
+                    description: New conversation UUID (from the post-send page URL).
+                  response_text:
+                    type: string
+                    description: Assistant reply assembled from SSE delta events.
+                  sse_event_count:
+                    type: integer
+                    description: Number of SSE `data:` frames received (diagnostic).

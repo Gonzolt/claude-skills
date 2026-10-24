@@ -1,0 +1,15 @@
+{
+  "operation_id": "getDirections",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "origin": "San Francisco, CA",
+        "destination": "Los Angeles, CA"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

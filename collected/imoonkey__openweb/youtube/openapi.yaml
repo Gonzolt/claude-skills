@@ -1,0 +1,1015 @@
+openapi: 3.1.0
+info:
+  title: youtube
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    requires_auth: false
+servers:
+  - url: https://www.youtube.com
+    x-openweb:
+      transport: node
+paths:
+  /youtubei/v1/search:
+    post:
+      operationId: searchVideos
+      summary: "Search videos by keyword — returns video titles, channel names, view counts, durations, thumbnails, video IDs"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0003
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+        adapter:
+          name: youtube-innertube
+          operation: searchVideos
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: "Search query"
+          schema:
+            type: string
+          example: "machine learning tutorial"
+      responses:
+        "200":
+          description: Trimmed search results with videos, channels, and playlists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - query
+                  - results
+                properties:
+                  query:
+                    type: string
+                    description: "The search query."
+                  estimatedResults:
+                    type: string
+                    description: "Estimated total result count as a numeric string."
+                  results:
+                    type: array
+                    description: "Search result items — videos, playlists, and channels."
+                    items:
+                      type: object
+                      properties:
+                        videoId:
+                          type: string
+                          description: "Video ID (present for video results)."
+                        title:
+                          type: string
+                          description: "Video/playlist/channel title."
+                        channelName:
+                          type: string
+                          description: "Channel name."
+                        viewCount:
+                          type: string
+                          description: "View count text (e.g. '9,976,380 views')."
+                        duration:
+                          type: string
+                          description: "Video duration (e.g. '27:14')."
+                        publishedTime:
+                          type: string
+                          description: "Relative publish time (e.g. '2 years ago')."
+                        thumbnail:
+                          type: string
+                          description: "Thumbnail URL."
+                        type:
+                          type: string
+                          description: "Result type — absent for videos, 'playlist' or 'channel' for others."
+
+  /youtubei/v1/browse:
+    post:
+      operationId: browseContent
+      summary: "Browse content by ID — homepage (FEwhat_to_watch), channel (UC...), subscriptions. Returns video grids, channel info, tabs"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0004
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+        adapter:
+          name: youtube-innertube
+          operation: browseContent
+      parameters:
+        - name: browseId
+          in: query
+          required: true
+          description: "Browse target — FEwhat_to_watch (home), channel ID (UC...), VL + playlist ID, FEsubscriptions"
+          schema:
+            type: string
+          example: "FEwhat_to_watch"
+        - name: params
+          in: query
+          required: false
+          description: "Optional browse parameters (base64 encoded, e.g. for channel Videos tab)"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Trimmed browse results — video grids, channel tabs, or feed content.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - browseId
+                  - tabs
+                properties:
+                  browseId:
+                    type: string
+                    description: "The browse ID that was requested."
+                  title:
+                    type: string
+                    description: "Page title (channel name, playlist title, etc.)."
+                  description:
+                    type: string
+                    description: "Page description."
+                  tabs:
+                    type: array
+                    description: "Content tabs — each with trimmed video items."
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                          description: "Tab title (e.g. 'Home', 'Videos', 'Playlists')."
+                        selected:
+                          type: boolean
+                          description: "Whether this tab is currently selected."
+                        videos:
+                          type: array
+                          description: "Trimmed video items in this tab."
+                          items:
+                            type: object
+                            properties:
+                              videoId:
+                                type: string
+                              title:
+                                type: string
+                              channelName:
+                                type: string
+                              viewCount:
+                                type: string
+                              duration:
+                                type: string
+                              thumbnail:
+                                type: string
+
+  /youtubei/v1/next:
+    post:
+      operationId: getVideoDetail
+      summary: "Get video detail — title, description, view count, likes, publish date, channel info, comments, recommendations"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0002
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+        adapter:
+          name: youtube-innertube
+          operation: getVideoDetail
+      parameters:
+        - name: videoId
+          in: query
+          required: true
+          description: "YouTube video ID (11 characters, e.g. dQw4w9WgXcQ)"
+          schema:
+            type: string
+          example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Trimmed video metadata with recommendations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoId
+                  - title
+                properties:
+                  videoId:
+                    type: string
+                    description: "The video ID."
+                  title:
+                    type: string
+                    description: "Video title."
+                  channelName:
+                    type: string
+                    description: "Channel display name."
+                  channelId:
+                    type: string
+                    description: "Channel ID (UC...)."
+                  subscriberCount:
+                    type: string
+                    description: "Channel subscriber count text."
+                  viewCount:
+                    type: string
+                    description: "View count text (e.g. '9,976,380 views')."
+                  dateText:
+                    type: string
+                    description: "Publish date text."
+                  likeCount:
+                    type: string
+                    description: "Like count text."
+                  description:
+                    type: string
+                    description: "Video description (truncated to 2000 chars)."
+                  hasTranscript:
+                    type: boolean
+                    description: "Whether getTranscript is available for this video."
+                  recommendations:
+                    type: array
+                    description: "Up to 10 recommended videos."
+                    items:
+                      type: object
+                      properties:
+                        videoId:
+                          type: string
+                        title:
+                          type: string
+                        channelName:
+                          type: string
+                        viewCount:
+                          type: string
+                        duration:
+                          type: string
+                        thumbnail:
+                          type: string
+
+  /youtubei/v1/player:
+    post:
+      operationId: getVideoPlayer
+      summary: "Get video player info — stream URLs, formats, adaptive formats, captions, video details, playability status"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0001
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "InnerTube API key."
+          schema:
+            type: string
+          example: AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+        - name: prettyPrint
+          in: query
+          required: false
+          description: "Disable pretty-printing for smaller payloads."
+          schema:
+            type: string
+          example: "false"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+                - videoId
+              properties:
+                context:
+                  type: object
+                  description: "InnerTube client context — required on every request."
+                  properties:
+                    client:
+                      type: object
+                      description: "Client identification block."
+                      required:
+                        - clientName
+                        - clientVersion
+                      properties:
+                        clientName:
+                          type: string
+                          description: "Client name identifier."
+                          example: WEB
+                        clientVersion:
+                          type: string
+                          description: "Client version string (changes with YouTube deploys)."
+                          example: "2.20260325.08.00"
+                videoId:
+                  type: string
+                  description: "YouTube video ID"
+                  example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Video player data including streaming URLs and formats.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoDetails
+                  - playabilityStatus
+                properties:
+                  videoDetails:
+                    type: object
+                    description: "Video metadata — title, lengthSeconds, channelId, shortDescription, viewCount, author, thumbnail."
+                  streamingData:
+                    type: object
+                    description: "Streaming URLs and formats — formats (progressive), adaptiveFormats (DASH/HLS). May be absent without auth."
+                  playabilityStatus:
+                    type: object
+                    description: "Playability status — status field is OK, UNPLAYABLE, or LOGIN_REQUIRED. Stream URLs restricted without auth."
+                  responseContext:
+                    type: object
+                    description: "Server response metadata."
+
+  /youtubei/v1/guide:
+    post:
+      operationId: getGuide
+      summary: "Get sidebar navigation guide — subscriptions, explore categories, library links"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0005
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "InnerTube API key."
+          schema:
+            type: string
+          example: AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+        - name: prettyPrint
+          in: query
+          required: false
+          description: "Disable pretty-printing for smaller payloads."
+          schema:
+            type: string
+          example: "false"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+              properties:
+                context:
+                  type: object
+                  description: "InnerTube client context — required on every request."
+                  properties:
+                    client:
+                      type: object
+                      description: "Client identification block."
+                      required:
+                        - clientName
+                        - clientVersion
+                      properties:
+                        clientName:
+                          type: string
+                          description: "Client name identifier."
+                          example: WEB
+                        clientVersion:
+                          type: string
+                          description: "Client version string (changes with YouTube deploys)."
+                          example: "2.20260325.08.00"
+      responses:
+        "200":
+          description: Guide navigation items.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    description: "Guide sections — guideSectionRenderer items with navigation entries (Home, Trending, Subscriptions, Library, etc.)."
+                    items:
+                      type: object
+                      description: "Guide section with formattedTitle and navigation items."
+                  responseContext:
+                    type: object
+                    description: "Server response metadata."
+
+  /youtubei/v1/notification/get_unseen_count:
+    post:
+      operationId: getNotificationCount
+      summary: "Get unseen notification count (requires auth — sapisidhash)"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0006
+          tool_version: 2
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "InnerTube API key."
+          schema:
+            type: string
+          example: AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+        - name: prettyPrint
+          in: query
+          required: false
+          description: "Disable pretty-printing for smaller payloads."
+          schema:
+            type: string
+          example: "false"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+              properties:
+                context:
+                  type: object
+                  description: "InnerTube client context — required on every request."
+                  properties:
+                    client:
+                      type: object
+                      description: "Client identification block."
+                      required:
+                        - clientName
+                        - clientVersion
+                      properties:
+                        clientName:
+                          type: string
+                          description: "Client name identifier."
+                          example: WEB
+                        clientVersion:
+                          type: string
+                          description: "Client version string (changes with YouTube deploys)."
+                          example: "2.20260325.08.00"
+      responses:
+        "200":
+          description: Notification count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - actions
+                properties:
+                  actions:
+                    type: array
+                    description: "Action list — contains updateNotificationsUnseenCountAction with unseenCount integer."
+                    items:
+                      type: object
+                      description: "Notification action with unseenCount."
+                  responseContext:
+                    type: object
+                    description: "Server response metadata."
+
+  /youtubei/v1/like/like:
+    post:
+      operationId: likeVideo
+      summary: "Like a video (requires auth — sapisidhash). SAFE: reversible via unlikeVideo"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: yt0007
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: likeVideo
+      parameters:
+        - name: videoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID to like."
+          example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Like confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: "Empty confirmation object on success."
+
+  /youtubei/v1/like/removelike:
+    post:
+      operationId: unlikeVideo
+      summary: "Remove like from a video (requires auth — sapisidhash)"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: yt0010
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: unlikeVideo
+      parameters:
+        - name: videoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID to unlike."
+          example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Unlike confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: "Empty confirmation object on success."
+
+  /youtubei/v1/subscription/subscribe:
+    post:
+      operationId: subscribeChannel
+      summary: "Subscribe to a channel (requires auth — sapisidhash). SAFE: reversible"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: yt0008
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: subscribeChannel
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "InnerTube API key."
+          schema:
+            type: string
+          example: AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+        - name: prettyPrint
+          in: query
+          required: false
+          description: "Disable pretty-printing for smaller payloads."
+          schema:
+            type: string
+          example: "false"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+                - channelIds
+              properties:
+                context:
+                  type: object
+                  description: "InnerTube client context — required on every request."
+                  properties:
+                    client:
+                      type: object
+                      description: "Client identification block."
+                      required:
+                        - clientName
+                        - clientVersion
+                      properties:
+                        clientName:
+                          type: string
+                          description: "Client name identifier."
+                          example: WEB
+                        clientVersion:
+                          type: string
+                          description: "Client version string (changes with YouTube deploys)."
+                          example: "2.20260325.08.00"
+                channelIds:
+                  type: array
+                  description: "Channel IDs to subscribe to."
+                  items:
+                    type: string
+                    description: "YouTube channel ID (e.g. UCsBjURrPoezykLs9EqgamOA)."
+      responses:
+        "200":
+          description: Subscribe confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: "Empty confirmation object on success."
+
+  /youtubei/v1/subscription/unsubscribe:
+    post:
+      operationId: unsubscribeChannel
+      summary: "Unsubscribe from a channel (requires auth — sapisidhash). Reverses subscribeChannel"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: yt0013
+          tool_version: 1
+          verified: false
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: unsubscribeChannel
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "InnerTube API key."
+          schema:
+            type: string
+          example: AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+        - name: prettyPrint
+          in: query
+          required: false
+          description: "Disable pretty-printing for smaller payloads."
+          schema:
+            type: string
+          example: "false"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+                - channelIds
+              properties:
+                context:
+                  type: object
+                  description: "InnerTube client context — required on every request."
+                  properties:
+                    client:
+                      type: object
+                      description: "Client identification block."
+                      required:
+                        - clientName
+                        - clientVersion
+                      properties:
+                        clientName:
+                          type: string
+                          description: "Client name identifier."
+                          example: WEB
+                        clientVersion:
+                          type: string
+                          description: "Client version string (changes with YouTube deploys)."
+                          example: "2.20260325.08.00"
+                channelIds:
+                  type: array
+                  description: "Channel IDs to unsubscribe from."
+                  items:
+                    type: string
+                    description: "YouTube channel ID (e.g. UCsBjURrPoezykLs9EqgamOA)."
+      responses:
+        "200":
+          description: Unsubscribe confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: "Empty confirmation object on success."
+
+  /video/{videoId}/comment:
+    post:
+      operationId: addComment
+      summary: "Add a comment to a video (requires auth — sapisidhash). Reversible via deleteComment"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: yt0014
+          tool_version: 1
+          verified: false
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: addComment
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID to comment on."
+          example: "dQw4w9WgXcQ"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: "Comment text content."
+                  example: "Great video!"
+      responses:
+        "200":
+          description: Created comment details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoId
+                  - commentId
+                  - text
+                properties:
+                  videoId:
+                    type: string
+                    description: "The video ID the comment was posted to."
+                  commentId:
+                    type: string
+                    description: "The created comment's unique identifier. Use with deleteComment to remove."
+                  text:
+                    type: string
+                    description: "The posted comment text."
+                  author:
+                    type: string
+                    description: "The authenticated user's display name."
+
+  /video/{videoId}/comment/{commentId}:
+    delete:
+      operationId: deleteComment
+      summary: "Delete own comment from a video (requires auth — sapisidhash). Reverses addComment"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: yt0015
+          tool_version: 1
+          verified: false
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: deleteComment
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID the comment belongs to."
+          example: "dQw4w9WgXcQ"
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Comment ID to delete. Get from addComment or getComments."
+          example: "UgzB1_kM5yz1Nv0nHdR4AaABAg"
+      responses:
+        "200":
+          description: Delete confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoId
+                  - commentId
+                  - deleted
+                properties:
+                  videoId:
+                    type: string
+                    description: "The video ID."
+                  commentId:
+                    type: string
+                    description: "The deleted comment ID."
+                  deleted:
+                    type: boolean
+                    description: "true on successful deletion."
+
+  /video/{videoId}/comments:
+    get:
+      operationId: getComments
+      summary: "Get comments on a video — author, text, likes, reply count, timestamps"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0011
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: getComments
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID (e.g. dQw4w9WgXcQ). Get from searchVideos or browseContent."
+          example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Video comments with author, text, and engagement.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoId
+                  - comments
+                properties:
+                  videoId:
+                    type: string
+                    description: "The video ID these comments belong to."
+                  totalComments:
+                    type: integer
+                    description: "Total comment count as parsed from header (e.g. 12345)."
+                  comments:
+                    type: array
+                    description: "Top-level comment threads."
+                    items:
+                      type: object
+                      required:
+                        - commentId
+                        - author
+                        - text
+                      properties:
+                        commentId:
+                          type: string
+                          description: "Unique comment identifier."
+                        author:
+                          type: string
+                          description: "Comment author display name."
+                        text:
+                          type: string
+                          description: "Comment text content."
+                        publishedTime:
+                          type: string
+                          description: "Relative time (e.g. '2 days ago')."
+                        likeCount:
+                          type: string
+                          description: "Like count as displayed (e.g. '1.2K')."
+                        replyCount:
+                          type: integer
+                          description: "Number of replies to this comment."
+                        authorThumbnail:
+                          type: string
+                          description: "URL of the comment author's profile thumbnail."
+                  note:
+                    type: string
+                    description: "Present when comments are disabled or unavailable."
+
+  /playlist/{playlistId}:
+    get:
+      operationId: getPlaylist
+      summary: "Get playlist details and video list — title, owner, video count, videos with IDs and durations"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0012
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: getPlaylist
+      parameters:
+        - name: playlistId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "YouTube playlist ID (e.g. PLWKjhJtqVAbkArDMaJhn2XB080UlFNRCt). Get from searchVideos or browseContent."
+          example: "PLWKjhJtqVAbkArDMaJhn2XB080UlFNRCt"
+      responses:
+        "200":
+          description: Playlist metadata and video list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - playlistId
+                  - title
+                  - videos
+                properties:
+                  playlistId:
+                    type: string
+                    description: "The playlist ID."
+                  title:
+                    type: string
+                    description: "Playlist title."
+                  description:
+                    type: string
+                    description: "Playlist description (may be empty)."
+                  owner:
+                    type: string
+                    description: "Playlist owner channel name."
+                  videoCount:
+                    type: string
+                    description: "Video count as displayed (e.g. '50 videos')."
+                  viewCount:
+                    type: string
+                    description: "Total views as displayed."
+                  videos:
+                    type: array
+                    description: "Videos in the playlist."
+                    items:
+                      type: object
+                      properties:
+                        videoId:
+                          type: string
+                          description: "Video ID (use with getVideoDetail, getVideoPlayer)."
+                        title:
+                          type: string
+                          description: "Video title."
+                        duration:
+                          type: string
+                          description: "Video duration as displayed (e.g. '10:30')."
+                        channelName:
+                          type: string
+                          description: "Channel that uploaded this video."
+                        thumbnail:
+                          type: string
+                          description: "Video thumbnail URL."
+                        index:
+                          type: string
+                          description: "Position in the playlist (1-based)."
+
+  /youtubei/v1/get_transcript:
+    post:
+      operationId: getTranscript
+      summary: "Get video transcript — timestamped lines. Adapter extracts params token from getVideoDetail automatically"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: yt0016
+          tool_version: 1
+          verified: false
+          signals:
+            - adapter-verified
+        adapter:
+          name: youtube-innertube
+          operation: getTranscript
+      parameters:
+        - name: videoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "YouTube video ID to get transcript for."
+          example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: Timestamped transcript lines.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - videoId
+                properties:
+                  videoId:
+                    type: string
+                    description: "The video ID."
+                  segments:
+                    type: array
+                    description: "Transcript segments with timestamps."
+                    items:
+                      type: object
+                      properties:
+                        startMs:
+                          type: string
+                          description: "Segment start time in milliseconds."
+                        endMs:
+                          type: string
+                          description: "Segment end time in milliseconds."
+                        text:
+                          type: string
+                          description: "Transcript text for this segment."
+                  note:
+                    type: string
+                    description: "Present when transcript is unavailable."

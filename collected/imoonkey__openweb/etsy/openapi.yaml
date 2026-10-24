@@ -1,0 +1,492 @@
+openapi: '3.1.0'
+info:
+  title: Etsy
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-09T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.etsy.com
+    x-openweb:
+      transport: page
+paths:
+  /search/{query}:
+    get:
+      operationId: searchListings
+      summary: Search listings by keyword — title, price, shop, rating, image, free shipping
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: etsy0001
+          signature_id: etsy0001s
+          tool_version: 1
+          signals:
+            - extraction_detected
+        extraction:
+          type: page_global_data
+          page_url: /search?q={query}
+          expression: |
+            (() => {
+              const query = new URLSearchParams(location.search).get('q') || '';
+              const cards = document.querySelectorAll('a[data-listing-id]');
+              const seen = new Set();
+              const listings = [];
+              for (const a of cards) {
+                const id = a.getAttribute('data-listing-id');
+                if (!id || seen.has(id)) continue;
+                seen.add(id);
+                const card = a.closest('div[data-appears-component-name]') || a.closest('li') || a.parentElement?.parentElement;
+                if (!card) continue;
+                const text = card.innerText || '';
+                const priceMatch = text.match(/\$[\d,.]+/);
+                const ratingMatch = text.match(/([\d.]+)\s*\n\s*\(([\d,.k]+)\)/);
+                const shopMatch = text.match(/(?:Ad・)?By\s+(\S+)/i);
+                const img = a.querySelector('img');
+                const href = a.href;
+                listings.push({
+                  listingId: id,
+                  title: card.querySelector('h3')?.textContent?.trim() || '',
+                  url: href ? href.split('?')[0] : '',
+                  price: priceMatch ? priceMatch[0] : null,
+                  currency: 'USD',
+                  image: img?.src || '',
+                  shopName: shopMatch ? shopMatch[1] : '',
+                  rating: ratingMatch ? Number.parseFloat(ratingMatch[1]) : null,
+                  reviewCount: ratingMatch ? ratingMatch[2] : null,
+                  freeShipping: text.includes('Free shipping'),
+                });
+              }
+              const capped = listings.slice(0, 20);
+              return { query, totalResults: capped.length, listings: capped };
+            })()
+      parameters:
+        - name: query
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Search keyword (e.g. "handmade pottery", "vintage jewelry").
+          example: handmade pottery
+      responses:
+        '200':
+          description: Search results with listing summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - query
+                  - totalResults
+                  - listings
+                properties:
+                  query:
+                    type: string
+                    description: Echo of the search query.
+                  totalResults:
+                    type: integer
+                    description: Number of listings returned.
+                  listings:
+                    type: array
+                    items:
+                      type: object
+                      description: A listing search result.
+                      required:
+                        - listingId
+                        - title
+                      properties:
+                        listingId:
+                          type: string
+                          description: Listing ID (use with getListingDetail, getReviews).
+                        title:
+                          type: string
+                          description: Listing title.
+                        url:
+                          type: string
+                          description: Full URL to the listing page.
+                        price:
+                          type:
+                            - string
+                            - 'null'
+                          description: Display price (e.g. "$45.00").
+                        currency:
+                          type: string
+                          description: Currency code (e.g. "USD").
+                        image:
+                          type: string
+                          description: Primary listing image URL.
+                        shopName:
+                          type: string
+                          description: Shop name (use with getShop).
+                        rating:
+                          type:
+                            - number
+                            - 'null'
+                          description: Average rating (0-5 scale).
+                        reviewCount:
+                          type:
+                            - string
+                            - 'null'
+                          description: Review count as display string (e.g. "7.1k").
+                        freeShipping:
+                          type: boolean
+                          description: Whether listing offers free shipping.
+
+  /listing/{listingId}:
+    get:
+      operationId: getListingDetail
+      summary: Get listing details — title, price, description, photos, seller, rating, material
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: etsy0002
+          signature_id: etsy0002s
+          tool_version: 1
+          signals:
+            - extraction_detected
+        extraction:
+          type: page_global_data
+          page_url: /listing/{listingId}
+          expression: |
+            (() => {
+              const pathMatch = location.pathname.match(/\/listing\/(\d+)/);
+              const listingId = pathMatch ? pathMatch[1] : '';
+              let product = null;
+              for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+                try {
+                  const d = JSON.parse(s.textContent || '');
+                  if (d && d['@type'] === 'Product') { product = d; break; }
+                } catch {}
+              }
+              if (!product) return null;
+              const decode = s => { const d = document.createElement('div'); d.innerHTML = s; return d.textContent || s; };
+              const offers = product.offers || {};
+              const rating = product.aggregateRating || {};
+              const brand = product.brand || {};
+              const imgs = document.querySelectorAll('img[src*="etsystatic.com"][src*="il_"]');
+              const photoSet = new Set();
+              for (const img of imgs) {
+                const src = img.src || '';
+                if (src.includes('il_fullxfull') || src.includes('il_794x')) photoSet.add(src);
+              }
+              const photos = [...photoSet].slice(0, 10);
+              const desc = decode(String(product.description || ''));
+              const price = offers.price ? Number(offers.price) : offers.lowPrice ? Number(offers.lowPrice) : null;
+              const rawImg = product.image;
+              const image = Array.isArray(rawImg) ? String(rawImg[0]?.contentURL || rawImg[0]?.url || '') : String(rawImg || '');
+              return {
+                listingId: String(product.sku || listingId),
+                title: decode(String(product.name || '')),
+                url: String(product.url || ''),
+                description: desc,
+                price,
+                currency: String(offers.priceCurrency || 'USD'),
+                availability: String(offers.availability || '').replace('https://schema.org/', ''),
+                shopName: String(brand.name || ''),
+                category: String(product.category || ''),
+                material: product.material ?? null,
+                rating: rating.ratingValue ? Number(rating.ratingValue) : null,
+                reviewCount: rating.reviewCount ? Number(rating.reviewCount) : null,
+                photos,
+                image,
+              };
+            })()
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Listing ID from searchListings.
+          example: '168685596'
+      responses:
+        '200':
+          description: Full listing details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - listingId
+                  - title
+                properties:
+                  listingId:
+                    type: string
+                    description: Listing ID.
+                  title:
+                    type: string
+                    description: Listing title.
+                  url:
+                    type: string
+                    description: Full URL to the listing page.
+                  description:
+                    type: string
+                    description: Seller-provided listing description.
+                  price:
+                    type:
+                      - number
+                      - 'null'
+                    description: Price as a number (falls back to lowPrice for variant/custom items).
+                  currency:
+                    type: string
+                    description: Currency code (e.g. "USD").
+                  availability:
+                    type: string
+                    description: Availability status (e.g. "InStock").
+                  shopName:
+                    type: string
+                    description: Shop name (use with getShop).
+                  category:
+                    type: string
+                    description: Listing category.
+                  material:
+                    type:
+                      - string
+                      - 'null'
+                    description: Material (e.g. "ceramic", "wood").
+                  rating:
+                    type:
+                      - number
+                      - 'null'
+                    description: Average rating (0-5 scale).
+                  reviewCount:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Total number of reviews.
+                  photos:
+                    type: array
+                    items:
+                      type: string
+                    description: List of photo URLs (up to 10).
+                  image:
+                    type: string
+                    description: Primary listing image URL.
+
+  /listing/{listingId}/reviews:
+    get:
+      operationId: getReviews
+      summary: Get reviews for a listing — rating, text, author, date, aggregate stats
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: etsy0003
+          signature_id: etsy0003s
+          tool_version: 1
+          signals:
+            - extraction_detected
+        extraction:
+          type: page_global_data
+          page_url: /listing/{listingId}
+          expression: |
+            (() => {
+              const pathMatch = location.pathname.match(/\/listing\/(\d+)/);
+              const listingId = pathMatch ? pathMatch[1] : '';
+              let product = null;
+              for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+                try {
+                  const d = JSON.parse(s.textContent || '');
+                  if (d && d['@type'] === 'Product') { product = d; break; }
+                } catch {}
+              }
+              if (!product) return null;
+              const decode = s => { const d = document.createElement('div'); d.innerHTML = s; return d.textContent || s; };
+              const aggregateRating = product.aggregateRating || {};
+              const rawReviews = Array.isArray(product.review) ? product.review : [];
+              const reviews = rawReviews.map(r => {
+                const reviewRating = r.reviewRating || {};
+                const author = r.author || {};
+                return {
+                  rating: reviewRating.ratingValue ? Number(reviewRating.ratingValue) : null,
+                  text: decode(String(r.reviewBody || '')),
+                  author: decode(String(author.name || '')),
+                  date: String(r.datePublished || ''),
+                };
+              });
+              return {
+                listingId,
+                averageRating: aggregateRating.ratingValue ? Number(aggregateRating.ratingValue) : null,
+                totalReviews: aggregateRating.reviewCount ? Number(aggregateRating.reviewCount) : null,
+                reviews,
+              };
+            })()
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Listing ID from searchListings.
+          example: '168685596'
+      responses:
+        '200':
+          description: Listing reviews and aggregate rating.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - listingId
+                  - reviews
+                properties:
+                  listingId:
+                    type: string
+                    description: Listing ID.
+                  averageRating:
+                    type:
+                      - number
+                      - 'null'
+                    description: Average rating (0-5 scale).
+                  totalReviews:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Total number of reviews for this listing.
+                  reviews:
+                    type: array
+                    description: Recent reviews (~4 from LD+JSON).
+                    items:
+                      type: object
+                      description: A single review.
+                      required:
+                        - text
+                      properties:
+                        rating:
+                          type:
+                            - integer
+                            - 'null'
+                          description: Star rating (1-5).
+                        text:
+                          type: string
+                          description: Review body text.
+                        author:
+                          type: string
+                          description: Reviewer display name.
+                        date:
+                          type: string
+                          description: Publication date (ISO format, e.g. "2026-04-01").
+
+  /shop/{shopName}:
+    get:
+      operationId: getShop
+      summary: Get shop profile — name, location, rating, sales, owner, active listings
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: etsy0004
+          signature_id: etsy0004s
+          tool_version: 1
+          signals:
+            - extraction_detected
+        extraction:
+          type: page_global_data
+          page_url: /shop/{shopName}
+          expression: |
+            (() => {
+              const pathMatch = location.pathname.match(/\/shop\/([^/?#]+)/);
+              const shopName = pathMatch ? decodeURIComponent(pathMatch[1]) : '';
+              let org = null;
+              for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+                try {
+                  const d = JSON.parse(s.textContent || '');
+                  if (d && d['@type'] === 'Organization') { org = d; break; }
+                } catch {}
+              }
+              if (!org) return null;
+              const rating = org.aggregateRating || {};
+              const employees = Array.isArray(org.employee) ? org.employee : [];
+              const text = document.body?.innerText || '';
+              const salesMatch = text.match(/([\d,.]+[kK]?)\s*sales/i);
+              const yearsMatch = text.match(/(\d+)\s+years?\s+on\s+Etsy/i);
+              const itemCount = document.querySelectorAll('[data-listing-id]').length;
+              return {
+                shopName: String(org.name || shopName),
+                description: String(org.description || ''),
+                url: String(org.url || ''),
+                logo: String(org.logo || ''),
+                location: String(org.location || ''),
+                slogan: org.slogan ? String(org.slogan) : null,
+                owner: employees[0] ? String(employees[0].name || '') : null,
+                rating: rating.ratingValue ? Number(rating.ratingValue) : null,
+                reviewCount: rating.reviewCount ? Number(rating.reviewCount) : null,
+                sales: salesMatch ? salesMatch[1] : null,
+                yearsOnEtsy: yearsMatch ? Number.parseInt(yearsMatch[1]) : null,
+                activeListings: itemCount,
+                image: org.image ? String(org.image) : null,
+              };
+            })()
+      parameters:
+        - name: shopName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Shop name from searchListings or getListingDetail.
+          example: nealpottery
+      responses:
+        '200':
+          description: Shop profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - shopName
+                properties:
+                  shopName:
+                    type: string
+                    description: Shop display name.
+                  description:
+                    type: string
+                    description: Shop description text.
+                  url:
+                    type: string
+                    description: Full URL to the shop page.
+                  logo:
+                    type: string
+                    description: Shop logo image URL.
+                  location:
+                    type: string
+                    description: Shop location (e.g. "Portland, OR").
+                  slogan:
+                    type:
+                      - string
+                      - 'null'
+                    description: Shop tagline or slogan.
+                  owner:
+                    type:
+                      - string
+                      - 'null'
+                    description: Shop owner name.
+                  rating:
+                    type:
+                      - number
+                      - 'null'
+                    description: Average shop rating (0-5 scale).
+                  reviewCount:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Total number of shop reviews.
+                  sales:
+                    type:
+                      - string
+                      - 'null'
+                    description: Sales count as display string (e.g. "28.5k").
+                  yearsOnEtsy:
+                    type:
+                      - integer
+                      - 'null'
+                    description: Number of years the shop has been on Etsy.
+                  activeListings:
+                    type: integer
+                    description: Number of active listings currently in the shop.
+                  image:
+                    type:
+                      - string
+                      - 'null'
+                    description: Shop banner or featured image URL.

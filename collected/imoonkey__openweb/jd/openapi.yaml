@@ -1,0 +1,261 @@
+openapi: '3.1.0'
+info:
+  title: JD.com
+  version: '2.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+- url: https://jd.com
+  x-openweb:
+    transport: page
+paths:
+  /internal/searchProducts:
+    get:
+      operationId: searchProducts
+      summary: Search products by keyword — name, price, shop, sales volume
+      x-openweb:
+        permission: read
+        build:
+          stable_id: jd0001
+          tool_version: 1
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: jd-global-api
+          operation: searchProducts
+      parameters:
+      - name: keyword
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Search keyword (Chinese or English).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number (30 results per page).
+      responses:
+        '200':
+          description: Search results with product listings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keyword:
+                    type: string
+                  page:
+                    type: integer
+                  resultCount:
+                    type: integer
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        skuId:
+                          type: string
+                          description: JD product SKU ID.
+                        name:
+                          type: ['string', 'null']
+                          description: Product name.
+                        price:
+                          type: ['string', 'null']
+                          description: Current price (CNY).
+                        shopName:
+                          type: ['string', 'null']
+                          description: Seller store name.
+                        sales:
+                          type: ['string', 'null']
+                          description: Sales volume (e.g. "1万+") or review count (e.g. "100万+条评价").
+                        image:
+                          type: ['string', 'null']
+                          description: Product image URL.
+                required:
+                - products
+  /internal/getProductDetail:
+    get:
+      operationId: getProductDetail
+      summary: Get product detail by SKU ID — name, price, images, variants, shop
+      x-openweb:
+        permission: read
+        build:
+          stable_id: jd0002
+          tool_version: 2
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: jd-global-api
+          operation: getProductDetail
+      parameters:
+      - name: skuId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: JD product SKU ID.
+      responses:
+        '200':
+          description: Full product detail from api.m.jd.com wareBusiness API.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [skuId]
+                properties:
+                  skuId:
+                    type: string
+                  name:
+                    type: ['string', 'null']
+                  price:
+                    type: ['string', 'null']
+                    description: Current price (CNY).
+                  originalPrice:
+                    type: ['string', 'null']
+                    description: Original/reference price (CNY).
+                  shopId:
+                    type: ['string', 'null']
+                  shopName:
+                    type: ['string', 'null']
+                  brand:
+                    type: ['string', 'null']
+                    description: Brand name (e.g. "华为（HUAWEI）").
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                    description: Category breadcrumb labels.
+                  images:
+                    type: array
+                    items:
+                      type: string
+                  variants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        skuId:
+                          type: string
+                        text:
+                          type: string
+                          description: Variant label (e.g. color name).
+                        image:
+                          type: ['string', 'null']
+                  inStock:
+                    type: ['boolean', 'null']
+  /internal/getProductReviews:
+    get:
+      operationId: getProductReviews
+      summary: Get product reviews by SKU ID — count, good rate, tags, individual reviews
+      x-openweb:
+        permission: read
+        build:
+          stable_id: jd0003
+          tool_version: 2
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: jd-global-api
+          operation: getProductReviews
+      parameters:
+      - name: skuId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: JD product SKU ID.
+      responses:
+        '200':
+          description: Product reviews from getLegoWareDetailComment API.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalCount:
+                    type: string
+                    description: Total number of reviews (e.g. "50万+").
+                  goodRate:
+                    type: ['string', 'null']
+                    description: Positive review percentage (e.g. "96%").
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label:
+                          type: string
+                        count:
+                          type: integer
+                  reviews:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user:
+                          type: string
+                          description: Reviewer nickname (may be anonymized).
+                        content:
+                          type: string
+                        score:
+                          type: integer
+                          description: Review score (1-5).
+                required:
+                - reviews
+  /internal/getProductPrice:
+    get:
+      operationId: getProductPrice
+      summary: Get product price by SKU ID — current price, original price, promotions, stock
+      x-openweb:
+        permission: read
+        build:
+          stable_id: jd0004
+          tool_version: 2
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: jd-global-api
+          operation: getProductPrice
+      parameters:
+      - name: skuId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: JD product SKU ID.
+      responses:
+        '200':
+          description: Product pricing information.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skuId:
+                    type: ['string', 'null']
+                  currentPrice:
+                    type: ['string', 'null']
+                    description: Current selling price (CNY).
+                  originalPrice:
+                    type: ['string', 'null']
+                    description: Original/reference price (CNY).
+                  currency:
+                    type: string
+                    enum: [CNY]
+                  inStock:
+                    type: ['boolean', 'null']
+                  promotions:
+                    type: ['array', 'null']
+                    items:
+                      type: string
+                required:
+                - currency
+                - inStock

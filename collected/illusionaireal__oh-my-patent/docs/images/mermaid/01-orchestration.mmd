@@ -1,0 +1,85 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'"Segoe UI","Microsoft YaHei",sans-serif','fontSize':'14px','primaryColor':'#eef2ff','primaryBorderColor':'#6366f1','primaryTextColor':'#1e1b4b','lineColor':'#64748b','secondaryColor':'#f1f5f9','tertiaryColor':'#ffffff'}}}%%
+flowchart TB
+    classDef stage fill:#eef2ff,stroke:#6366f1,stroke-width:1.5px,color:#1e1b4b
+    classDef brainstorm fill:#fef3c7,stroke:#f59e0b,stroke-width:1.5px,color:#78350f
+    classDef draft fill:#d1fae5,stroke:#10b981,stroke-width:1.5px,color:#064e3b
+    classDef qa fill:#fee2e2,stroke:#ef4444,stroke-width:1.5px,color:#7f1d1d
+    classDef diagram fill:#ede9fe,stroke:#8b5cf6,stroke-width:1.5px,color:#4c1d95
+    classDef done fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+    classDef gate fill:#fff7ed,stroke:#ea580c,stroke-width:1.5px,color:#7c2d12
+    classDef persist fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155,stroke-dasharray:3 3
+    classDef orchestr fill:#4f46e5,stroke:#4338ca,stroke-width:2px,color:#ffffff
+
+    Arch{{"Archimedes<br/>主编排器"}}
+    class Arch orchestr
+
+    subgraph S1[" "]
+        direction TB
+        INIT[INIT<br/>初始化项目]
+        RESEARCH[RESEARCH<br/>专利检索]
+    end
+    class S1 stage
+    class INIT,RESEARCH stage
+
+    subgraph S2[" "]
+        direction TB
+        R1[BRAINSTORM_R1<br/>对抗式头脑风暴]
+        R2[BRAINSTORM_R2<br/>多维并行评估]
+        GATE{"阈值门禁<br/>score≥8.5<br/>novelty≥6.0<br/>creativity≥6.0"}
+    end
+    class S2 brainstorm
+    class R1,R2 brainstorm
+    class GATE gate
+
+    subgraph S3[" "]
+        direction TB
+        DRAFT[DRAFT<br/>撰写交底书]
+        DD[DIAGRAM_DRAFT<br/>生成附图初稿]
+    end
+    class S3 draft
+    class DRAFT,DD draft
+
+    subgraph S4[" "]
+        direction TB
+        QA[QA_LOOP<br/>质量审查闭环]
+        FR[FINAL_REVIEW<br/>终审]
+    end
+    class S4 qa
+    class QA,FR qa
+
+    subgraph S5[" "]
+        direction TB
+        DF[DIAGRAM_FINAL<br/>附图定稿]
+        DONE([DONE<br/>交付完成])
+    end
+    class S5 diagram
+    class DF diagram
+    class DONE done
+
+    subgraph Persist["持久化层"]
+        direction LR
+        PS[.patent/state.json<br/>工作流状态]
+        BP[.brainstorm/path.json<br/>决策路径]
+        REF[references/<br/>代理输出]
+    end
+    class Persist persist
+    class PS,BP,REF persist
+
+    Arch --> INIT
+    INIT --> RESEARCH
+    RESEARCH --> R1
+    R1 --> R2
+    R2 --> GATE
+    GATE -- 通过 --> DRAFT
+    GATE -- 未达标<br/>迭代 --> R1
+    DRAFT --> DD
+    DD --> QA
+    QA -- 0问题<br/>连续2轮 --> FR
+    QA -- 发现问题 --> DRAFT
+    FR -- 通过 --> DF
+    FR -- 需修订 --> QA
+    DF --> DONE
+
+    Arch -.读写.-> PS
+    Arch -.记录.-> BP
+    Arch -.落盘.-> REF

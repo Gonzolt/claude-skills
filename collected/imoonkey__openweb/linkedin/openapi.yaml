@@ -1,0 +1,770 @@
+openapi: "3.1.0"
+info:
+  title: LinkedIn
+  version: "1.0.0"
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: "2026-04-01T17:00:00.000Z"
+    requires_auth: true
+servers:
+  - url: https://www.linkedin.com
+    x-openweb:
+      transport: page
+      auth:
+        type: cookie_session
+      csrf:
+        type: cookie_to_header
+        cookie: JSESSIONID
+        header: csrf-token
+        scope: [GET, POST, PUT, DELETE]
+paths:
+  /voyager/api/me:
+    get:
+      operationId: getMe
+      summary: "Get authenticated user's own profile — name, headline, profile URN, miniProfile"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ed98da697f5878a7
+          tool_version: 2
+          verified: true
+      parameters: []
+      responses:
+        "200":
+          description: Own profile data in LinkedIn normalized JSON format
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [miniProfile]
+                properties:
+                  plainId:
+                    type: integer
+                    description: Numeric member ID.
+                  miniProfile:
+                    type: object
+                    description: Compact profile with name, headline, and identifiers.
+                    required: [firstName, lastName, publicIdentifier, entityUrn]
+                    properties:
+                      firstName:
+                        type: string
+                        description: First name.
+                      lastName:
+                        type: string
+                        description: Last name.
+                      occupation:
+                        type: string
+                        description: Current headline or occupation.
+                      publicIdentifier:
+                        type: string
+                        description: Vanity URL slug (e.g. "williamhgates").
+                      entityUrn:
+                        type: string
+                        description: Profile URN (e.g. "urn:li:fs_miniProfile:...").
+                      dashEntityUrn:
+                        type: string
+                        description: Dash-format profile URN for identity API.
+                      picture:
+                        type: object
+                        description: Profile photo with resolution variants.
+                  publicContactInfo:
+                    type: object
+                    description: Public contact details (websites, Twitter handle, etc.).
+                  premiumSubscriber:
+                    type: boolean
+                    description: Whether the user has a Premium subscription.
+
+  /internal/getProfile:
+    get:
+      operationId: getProfile
+      summary: "Get a user profile by vanity name (URL slug) — name, headline, location, industry, connections"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: aeb9887866a5beda
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: getProfile
+      parameters:
+        - name: variables
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "(vanityName:williamhgates)"
+          description: "Rest.li tuple with vanityName (the URL slug, e.g. 'williamhgates' from linkedin.com/in/williamhgates)"
+      responses:
+        "200":
+          description: Profile data in LinkedIn normalized JSON format with included entities
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with profile fields.
+                  meta:
+                    type: object
+                    description: Response metadata (pagination tokens, request context).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (companies, schools, skills).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /voyager/api/identity/dash/profiles/{id}:
+    get:
+      operationId: getProfileByUrn
+      summary: "Get a user profile by URN — full profile with experience, education, skills sections"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ba1451f11cad9007
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "urn:li:fsd_profile:ACoAAA8BYqEBCGLg_vT_ca6WMtqDi46mlb-Y"
+          description: "Profile URN (e.g. urn:li:fsd_profile:...) — get from getMe or getProfile response"
+        - name: decorationId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "com.linkedin.voyager.dash.deco.identity.profile.FullProfile-76"
+          description: "Decoration ID controls which fields are returned. FullProfile-76 returns all sections."
+      responses:
+        "200":
+          description: Full profile data with all sections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [firstName, lastName, entityUrn]
+                properties:
+                  firstName:
+                    type: string
+                    description: First name.
+                  lastName:
+                    type: string
+                    description: Last name.
+                  headline:
+                    type: string
+                    description: Professional headline.
+                  summary:
+                    type: [string, "null"]
+                    description: Profile summary / about section.
+                  publicIdentifier:
+                    type: string
+                    description: Vanity URL slug.
+                  entityUrn:
+                    type: string
+                    description: Profile URN identifier.
+                  industry:
+                    type: object
+                    description: Industry classification.
+                    properties:
+                      name:
+                        type: string
+                        description: Industry name (e.g. "Computer Software").
+                  geoLocation:
+                    type: object
+                    description: Geographic location with country and region codes.
+                  profilePicture:
+                    type: object
+                    description: Profile photo with resolution variants.
+                  premium:
+                    type: boolean
+                    description: Whether the user has a Premium subscription.
+
+  /internal/getFeed:
+    get:
+      operationId: getFeed
+      summary: "Get main feed — posts, articles, shares with author info, engagement counts, comments preview"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: d9ca7024f34babc3
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: getFeed
+      parameters:
+        - name: variables
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "(count:10,sortOrder:RELEVANCE)"
+          description: "Rest.li tuple — count (items per page), sortOrder (RELEVANCE or RECENT)"
+      responses:
+        "200":
+          description: Feed items in normalized JSON format
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with feed entries.
+                  meta:
+                    type: object
+                    description: Response metadata (pagination tokens, request context).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (authors, companies, media).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /voyager/api/relationships/connectionsSummary:
+    get:
+      operationId: getConnectionsSummary
+      summary: "Get connections summary — total connection count, new connections count"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ad14a83784ac972c
+          tool_version: 2
+          verified: true
+      parameters: []
+      responses:
+        "200":
+          description: Connection counts and summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [numConnections]
+                properties:
+                  entityUrn:
+                    type: string
+                    description: Connections summary entity URN.
+                  numConnections:
+                    type: integer
+                    description: Total number of first-degree connections.
+
+  /voyager/api/relationships/invitationViews:
+    get:
+      operationId: getInvitations
+      summary: "Get pending connection invitations — sender name, headline, shared connections, time sent"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 5e4a43553b6e9370
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 10
+          description: "Number of invitations to return"
+        - name: includeInsights
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "true"
+          description: "Include insights (shared connections, etc.)"
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "receivedInvitation"
+          description: "Query type — receivedInvitation for pending invites"
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 0
+          description: "Pagination offset"
+      responses:
+        "200":
+          description: List of pending invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [elements, paging]
+                properties:
+                  metadata:
+                    type: object
+                    description: Response metadata with pagination token.
+                    properties:
+                      paginationToken:
+                        type: string
+                        description: Token for fetching the next page.
+                  elements:
+                    type: array
+                    description: Invitation entries.
+                    items:
+                      type: object
+                      description: A pending invitation with sender info.
+                      required: [invitation]
+                      properties:
+                        entityUrn:
+                          type: string
+                          description: Invitation entity URN.
+                        insights:
+                          type: array
+                          description: Connection insights (shared connections, mutual companies).
+                          items:
+                            type: object
+                            description: An insight entry.
+                        invitation:
+                          type: object
+                          description: Invitation details with sender profile.
+                          properties:
+                            mailboxItemId:
+                              type: string
+                              description: Mailbox item identifier.
+                            fromMember:
+                              type: object
+                              description: Sender's profile summary.
+                              required: [firstName, lastName]
+                              properties:
+                                firstName:
+                                  type: string
+                                  description: Sender's first name.
+                                lastName:
+                                  type: string
+                                  description: Sender's last name.
+                                occupation:
+                                  type: string
+                                  description: Sender's headline or occupation.
+                                publicIdentifier:
+                                  type: string
+                                  description: Sender's vanity URL slug.
+                            message:
+                              type: [string, "null"]
+                              description: Custom invitation message (null if no message).
+                            sentTime:
+                              type: integer
+                              description: Unix timestamp (ms) when invitation was sent.
+                            customMessage:
+                              type: boolean
+                              description: Whether the invitation included a custom message.
+                            invitationType:
+                              type: string
+                              description: "Invitation type (e.g. CONNECTION)."
+                  paging:
+                    type: object
+                    description: Pagination state.
+                    required: [count, start]
+                    properties:
+                      count:
+                        type: integer
+                        description: Number of items returned.
+                      start:
+                        type: integer
+                        description: Current offset.
+                      total:
+                        type: integer
+                        description: Total number of pending invitations.
+
+  /voyager/api/voyagerIdentityDashNotificationCards:
+    get:
+      operationId: getNotificationCards
+      summary: "Get notification cards — likes, comments, connection requests, job alerts, mentions"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 3cead00fe2be51a1
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 10
+          description: "Number of notifications to return"
+        - name: decorationId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "com.linkedin.voyager.dash.deco.identity.notifications.CardsCollectionWithInjectionsNoPills-24"
+          description: "Decoration ID for notification card format"
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "filterVanityName"
+          description: "Query filter type"
+      responses:
+        "200":
+          description: Notification cards
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [elements]
+                properties:
+                  metadata:
+                    type: object
+                    description: Notification metadata with unseen count.
+                    properties:
+                      numUnseen:
+                        type: integer
+                        description: Number of unseen notifications.
+                      nextStart:
+                        type: integer
+                        description: Offset for fetching the next page.
+                      latestPublishedAt:
+                        type: integer
+                        description: Unix timestamp (ms) of the most recent notification.
+                  elements:
+                    type: array
+                    description: Notification card entries.
+                    items:
+                      type: object
+                      description: A notification card (like, comment, mention, job alert).
+                      required: [entityUrn, publishedAt]
+                      properties:
+                        entityUrn:
+                          type: string
+                          description: Notification entity URN.
+                        read:
+                          type: boolean
+                          description: Whether the notification has been read.
+                        publishedAt:
+                          type: integer
+                          description: Unix timestamp (ms) when notification was published.
+                        headline:
+                          type: object
+                          description: Notification headline text.
+                          properties:
+                            text:
+                              type: string
+                              description: Human-readable notification summary.
+                        headerImage:
+                          type: object
+                          description: Avatar or icon for the notification.
+                        cardAction:
+                          type: object
+                          description: Primary action (URL to navigate to on click).
+                        actions:
+                          type: array
+                          description: Secondary actions (e.g. dismiss, mark read).
+                          items:
+                            type: object
+                            description: An action button.
+                  paging:
+                    type: object
+                    description: Pagination state.
+                    required: [count, start]
+                    properties:
+                      count:
+                        type: integer
+                        description: Number of items returned.
+                      start:
+                        type: integer
+                        description: Current offset.
+
+  /internal/getNewsStorylines:
+    get:
+      operationId: getNewsStorylines
+      summary: "Get LinkedIn news storylines — trending topics, curated news articles, industry updates"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: "0480efd17380ac76"
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: getNewsStorylines
+      parameters:
+        - name: variables
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "()"
+          description: "Rest.li tuple — empty for default news feed"
+      responses:
+        "200":
+          description: News storylines
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with news storylines.
+                  meta:
+                    type: object
+                    description: Response metadata (pagination tokens, request context).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (articles, authors, topics).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /internal/getCompany:
+    get:
+      operationId: getCompany
+      summary: "Get company/organization page — name, industry, size, description, follower count"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: f002a6bde64bf160
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: getCompany
+      parameters:
+        - name: variables
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "(universalName:microsoft)"
+          description: "Rest.li tuple — universalName is the company URL slug (e.g. 'microsoft' from linkedin.com/company/microsoft)"
+      responses:
+        "200":
+          description: Company page data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with company profile fields.
+                  meta:
+                    type: object
+                    description: Response metadata (pagination tokens, request context).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (employees, locations, specialties).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /voyager/api/relationships/myNetworkNotifications:
+    get:
+      operationId: getMyNetworkNotifications
+      summary: "Get My Network notifications — new connection suggestions, people you may know updates"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 5bc65670eab8eb94
+          tool_version: 2
+          verified: true
+      parameters: []
+      responses:
+        "200":
+          description: Network notification data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [elements]
+                properties:
+                  metadata:
+                    type: object
+                    description: Network notification metadata.
+                    properties:
+                      numUnseen:
+                        type: integer
+                        description: Number of unseen network notifications.
+                      latestPublishedAt:
+                        type: integer
+                        description: Unix timestamp (ms) of the most recent notification.
+                  elements:
+                    type: array
+                    description: Network notification entries.
+                    items:
+                      type: object
+                      description: A network notification (connection suggestion, birthday, work anniversary).
+                  paging:
+                    type: object
+                    description: Pagination state.
+                    required: [count, start]
+                    properties:
+                      count:
+                        type: integer
+                        description: Number of items returned.
+                      start:
+                        type: integer
+                        description: Current offset.
+
+  /internal/searchJobs:
+    get:
+      operationId: searchJobs
+      summary: "Search for jobs by keyword and location — titles, companies, locations, posting dates, applicant counts"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: a7c3b892d4e1f056
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: searchJobs
+      parameters:
+        - name: keywords
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "software engineer"
+          description: "Job search keywords (job title, skill, or company)"
+        - name: geoId
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "103644278"
+          description: "LinkedIn geo ID for location filter (e.g. 103644278 for United States, 90000084 for San Francisco Bay Area). Use searchGeo to look up geoIds by name."
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 25
+          description: "Number of results per page (default 25)"
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 0
+          description: "Pagination offset"
+      responses:
+        "200":
+          description: Job search results in LinkedIn normalized JSON format
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with job search results.
+                  meta:
+                    type: object
+                    description: Response metadata (pagination tokens, total count).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (companies, locations, job cards).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /internal/getJobDetail:
+    get:
+      operationId: getJobDetail
+      summary: "Get job posting details — description, requirements, company info, salary range, applicant count"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: c8d9e0f1a3b45678
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: getJobDetail
+      parameters:
+        - name: jobId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "3945709057"
+          description: "Job posting ID — from URL linkedin.com/jobs/view/{id} or from searchJobs results"
+      responses:
+        "200":
+          description: Job posting details in LinkedIn normalized JSON format
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with job posting details.
+                  meta:
+                    type: object
+                    description: Response metadata (request context).
+                  included:
+                    type: array
+                    description: Normalized referenced entities (company, skills, salary info).
+                    items:
+                      type: object
+                      description: A referenced entity.
+
+  /internal/searchGeo:
+    get:
+      operationId: searchGeo
+      summary: "Search for LinkedIn geo IDs by location name — use returned geoId with searchJobs"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: d9e0f1a2b3c45679
+          tool_version: 2
+          verified: true
+          signals: [adapter-verified]
+        adapter:
+          name: linkedin-graphql
+          operation: searchGeo
+      parameters:
+        - name: keywords
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "San Francisco Bay Area"
+          description: "Location name to search (city, metro area, state, or country)"
+      responses:
+        "200":
+          description: Geo typeahead results with LinkedIn geo URNs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    description: Primary response payload with typeahead results.
+                  included:
+                    type: array
+                    description: "Geo entities — extract geoId from entityUrn (urn:li:fsd_geo:{geoId})."
+                    items:
+                      type: object
+                      description: A geo entity with entityUrn and location name.

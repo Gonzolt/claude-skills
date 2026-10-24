@@ -1,0 +1,17 @@
+{
+  "operation_id": "followBoard",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "cases": [
+    {
+      "input": {
+        "source_url": "/marthastewart/baking-and-dessert-recipes-and-ideas/",
+        "data": "{\"options\":{\"url\":\"/v3/boards/32088284783993002/follow/\"},\"context\":{}}"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

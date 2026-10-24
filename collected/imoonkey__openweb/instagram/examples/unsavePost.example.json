@@ -1,0 +1,17 @@
+{
+  "operation_id": "unsavePost",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "cases": [
+    {
+      "input": {
+        "id": "3865890235180097425"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ],
+  "order": 100
+}

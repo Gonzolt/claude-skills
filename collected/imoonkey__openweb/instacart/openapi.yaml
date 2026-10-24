@@ -1,0 +1,256 @@
+openapi: '3.1.0'
+info:
+  title: Instacart API
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+  - url: https://www.instacart.com
+    x-openweb:
+      transport: page
+      auth:
+        type: cookie_session
+paths:
+  /internal/searchProducts:
+    get:
+      operationId: searchProducts
+      summary: Search grocery products by keyword — returns product names, prices, brands, availability, and autocomplete suggestions
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ic0001
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: instacart-graphql
+          operation: searchProducts
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search keyword (e.g. "bananas", "organic milk", "chicken breast").
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Max autocomplete suggestions to return.
+      responses:
+        '200':
+          description: Search suggestions and product results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - products
+                  - count
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        searchTerm:
+                          type: string
+                        isNatural:
+                          type: boolean
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        productId:
+                          type: string
+                          description: Instacart product ID.
+                        name:
+                          type: string
+                        size:
+                          type: string
+                        brandName:
+                          type:
+                            - string
+                            - 'null'
+                        price:
+                          type: string
+                          description: Display price (e.g. "$1.40 each (est.)").
+                        pricePerUnit:
+                          type:
+                            - string
+                            - 'null'
+                        imageUrl:
+                          type: string
+                        available:
+                          type: boolean
+                        stockLevel:
+                          type:
+                            - string
+                            - 'null'
+                  count:
+                    type: integer
+
+  /internal/getStoreProducts:
+    get:
+      operationId: getStoreProducts
+      summary: Browse products in a store department — returns product names, prices, brands for a specific store and category
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ic0002
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: instacart-graphql
+          operation: getStoreProducts
+      parameters:
+        - name: retailerSlug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Store slug (e.g. "costco", "sprouts", "publix").
+        - name: slug
+          in: query
+          required: false
+          schema:
+            type: string
+            default: produce
+          description: Category slug (e.g. "produce", "dairy", "snacks"). Defaults to "produce".
+        - name: shopId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Shop ID. Auto-resolved from retailerSlug if omitted.
+        - name: first
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Max products to return.
+      responses:
+        '200':
+          description: Store category products.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - products
+                  - count
+                properties:
+                  collection:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      slug:
+                        type: string
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        productId:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: string
+                        brandName:
+                          type:
+                            - string
+                            - 'null'
+                        price:
+                          type: string
+                        pricePerUnit:
+                          type:
+                            - string
+                            - 'null'
+                        imageUrl:
+                          type: string
+                        available:
+                          type: boolean
+                        stockLevel:
+                          type:
+                            - string
+                            - 'null'
+                  count:
+                    type: integer
+                  hasMore:
+                    type: boolean
+
+  /internal/getNearbyStores:
+    get:
+      operationId: getNearbyStores
+      summary: Find nearby stores with delivery ETAs — returns retailer IDs, estimated delivery times, and display strings
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ic0003
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: instacart-graphql
+          operation: getNearbyStores
+      parameters:
+        - name: postalCode
+          in: query
+          required: true
+          schema:
+            type: string
+          description: ZIP/postal code for delivery area (e.g. "90210", "27705").
+        - name: shopIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          description: Specific shop IDs to check. If empty, returns all available stores.
+      responses:
+        '200':
+          description: Nearby stores with delivery estimates.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - stores
+                  - count
+                properties:
+                  stores:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        retailerId:
+                          type: string
+                        etaMinutes:
+                          type: integer
+                          nullable: true
+                          description: Estimated delivery time in minutes.
+                        etaDisplay:
+                          type: string
+                          nullable: true
+                          description: Human-readable ETA (e.g. "25 min").
+                  count:
+                    type: integer

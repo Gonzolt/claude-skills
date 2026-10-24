@@ -1,0 +1,153 @@
+// The board's core events (D59): the one place an event name is listed. A member subscribes to
+// the events that wake its `wait --mentions`; adding an event is a row in EVENTS and the call
+// that posts it by its constant.
+import type { Message, Participant } from "./board.ts";
+import { profileOf } from "./kinds.ts";
+
+export type EventName = "agreement" | "endorsement" | "merged" | "joined" | "ended" | "stale" | "opened" | "closed" | "urgent" | "flag" | "quiet" | "back" | "phase" | "pause" | "resume" | "done" | "all-done" | "idle" | "stalled" | "gone" | "liveness";
+/** `run`: the member's own run; `any`: every run of the project. */
+export type Scope = "run" | "any";
+export type Subscription = { event: EventName; scope: Scope };
+
+export interface EventDef {
+  name: EventName;
+  /** always wakes, whatever the subscriptions (urgent) */
+  always?: boolean;
+  /** posted by the board in a member's name, it reaches that member too (stalled, liveness) */
+  toAuthor?: boolean;
+  /** the line a woken member runs next, or null; `cli` is the command prefix the CLI prints */
+  next?(m: Message, me: Participant, cli: string): string | null;
+}
+
+/** A POSIX shell word, double-quoted when it holds anything else than plain characters. */
+const word = (w: string): string => (/^[\w@%+=:,./-]+$/.test(w) ? w : `"${w.replace(/(["\\$`])/g, "\\$1")}"`);
+
+export const EVENTS: Record<EventName, EventDef> = {
+  // a seat backs another member's agreement (D36)
+  agreement: {
+    name: "agreement",
+    next: (m, me, cli) =>
+      profileOf(me.kind).member === "seat" && m.from !== me.name ? `back it: ${cli} endorse ${m.seq} --as ${word(me.name)}` : null,
+  },
+  endorsement: { name: "endorsement" },
+  merged: { name: "merged" },
+  joined: { name: "joined" },
+  ended: { name: "ended" },
+  stale: { name: "stale" },
+  // an orchestrator silent STALE_MS, posted once in its run (D15); "back" when it calls again
+  quiet: { name: "quiet" },
+  back: { name: "back" },
+  // when a run opens: its kind, group and title (D69)
+  opened: { name: "opened" },
+  closed: { name: "closed" },
+  urgent: { name: "urgent", always: true },
+  // the orchestrator opens a phase (`phase <name> <text>`), the current one ending with it: a separator on the thread;
+  // it mentions `<group>/*`, so its own run's members wake and no other's, whatever the run's kind; a member
+  // runs `done <name>` when its part is in
+  phase: {
+    name: "phase",
+    next: (m, me, cli) => {
+      const name = m.meta && "phase" in m.meta ? m.meta.phase : null;
+      if (!name || me.slice === "orchestrator" || m.from === me.name) return null;
+      return `when your part of ${name} is posted: ${cli} done ${word(name)} --as ${word(me.name)}`;
+    },
+  },
+  // the orchestrator pauses its run (`pause [text]`): mentions `<group>/*`, every member stops and waits for the resume
+  pause: {
+    name: "pause",
+    next: (m, me, cli) =>
+      me.slice === "orchestrator" || m.from === me.name
+        ? null
+        : `stop where you are: start nothing new, claim and merge nothing; wait in the foreground for the resume: ${cli} wait --mentions --as ${word(me.name)}`,
+  },
+  // the orchestrator lifts the pause (`resume [text]`), its message in the body: every member continues
+  resume: {
+    name: "resume",
+    next: (m, me) => (me.slice === "orchestrator" || m.from === me.name ? null : "the run resumed: continue where you stopped, as the resume's message says"),
+  },
+  // a member finished the current phase (`done <name>`); mentions the orchestrator
+  done: { name: "done" },
+  // every member of the run is done with the current phase: one event to the orchestrator
+  "all-done": {
+    name: "all-done",
+    next: (m, me, cli) =>
+      me.slice === "orchestrator" ? `open the next phase: ${cli} phase <name> "<text>" --as ${word(me.name)}; after the last, ${cli} close --run ${m.run}` : null,
+  },
+  // every member but the orchestrator waiting (D31): at each whole IDLE_MS while it holds; wakes the orchestrator alone
+  idle: {
+    name: "idle",
+    toAuthor: true,
+    next: (_m, me, cli) =>
+      me.slice === "orchestrator" ? `the swarm is quiet: open the next phase if all are done (${cli} phase <name> "<text>" --as ${word(me.name)}), else wait again` : null,
+  },
+  // `stalled <member>`: one member quiet past the run's threshold, to the orchestrator alone, again every
+  // STALLED_AGAIN_MS while it lasts (swarm-relay D11); no other member is woken
+  stalled: {
+    name: "stalled",
+    toAuthor: true,
+    next: (_m, me, cli) =>
+      me.slice === "orchestrator" ? `read the thread, then address the member who owes a move (${cli} post "@<member> <what you need>" --as ${word(me.name)})` : null,
+  },
+  // a member whose agent finished without end, or whose link is lost (D12); to the orchestrator alone
+  gone: {
+    name: "gone",
+    toAuthor: true,
+    next: (_m, me) => (me.slice === "orchestrator" ? "its agent is not running: dispatch it again, or close its slice" : null),
+  },
+  // a member's transcript cannot be read: the stall check is blind for it; mentions the orchestrator
+  liveness: { name: "liveness", toAuthor: true },
+  // a write outside the writer's claim on a path another holds (D10); mentions: the holder, then the writer
+  flag: {
+    name: "flag",
+    next: (m, me, cli) => {
+      const [holder, writer] = m.mentions;
+      if (!m.about || !holder || !writer) return null;
+      if (me.name === holder) return `settle it: ${cli} agree ${word(`@${writer} <who changes what>`)} --about ${word(m.about)}`;
+      if (me.name === writer) return `settle it: ${cli} post ${word(`@${holder} <what you change>`)} --about ${word(m.about)}`;
+      return null;
+    },
+  },
+};
+
+const NAMES = Object.keys(EVENTS) as EventName[];
+const isEvent = (s: string): s is EventName => Object.hasOwn(EVENTS, s);
+
+/** The message's event: its stored name, else what its kind is (agreement, endorsement, urgent); null for a plain post. */
+export function eventOf(m: Message): EventName | null {
+  if (m.event && isEvent(m.event)) return m.event;
+  return m.kind === "agreement" || m.kind === "endorsement" || m.kind === "urgent" ? m.kind : null;
+}
+
+/** "agreement,any:merged" (or a list of such; `main:` is read as `any:`); throws on an unknown name, listing the known ones. */
+export function parseSubscriptions(spec: string | string[]): Subscription[] {
+  const parts = (Array.isArray(spec) ? spec : [spec]).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+  const out: Subscription[] = [];
+  for (const p of parts) {
+    const prefix = /^(any|main):/.exec(p)?.[0];
+    const name = prefix ? p.slice(prefix.length) : p;
+    if (!isEvent(name)) throw new Error(`unknown event ${name}: the events are ${NAMES.join(", ")}`);
+    const sub: Subscription = { event: name, scope: prefix ? "any" : "run" };
+    if (!out.some((o) => o.event === sub.event && o.scope === sub.scope)) out.push(sub);
+  }
+  return out;
+}
+
+/** "agreement, any:merged" */
+export function formatSubscriptions(subs: Subscription[]): string {
+  return subs.map((s) => (s.scope === "any" ? `any:${s.event}` : s.event)).join(", ");
+}
+
+/** Mentions `me` by name or its plan's @all. */
+export function mentions(m: Message, me: Participant): boolean {
+  return m.mentions.includes(me.name) || m.mentions.includes(`${me.plan}/*`);
+}
+
+/** A message that ends `me`'s `wait --mentions`: a mention, an always event, or a subscribed event in its scope. */
+export function wakes(m: Message, me: Participant, subs: Subscription[]): boolean {
+  if (m.from === me.name && !(m.event && isEvent(m.event) && EVENTS[m.event].toAuthor)) return false;
+  if (mentions(m, me)) return true;
+  const e = eventOf(m);
+  if (!e) return false;
+  if (EVENTS[e].always) return true;
+  return subs.some((s) => s.event === e && (s.scope === "any" || m.run === me.run));
+}

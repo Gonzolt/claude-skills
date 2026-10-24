@@ -1,0 +1,18 @@
+{
+  "operation_id": "unsavePin",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "order": 2,
+  "cases": [
+    {
+      "input": {
+        "source_url": "/",
+        "data": "{\"options\":{\"id\":\"${prev.savePin.resource_response.data.id}\",\"board_id\":\"${prev.savePin.resource_response.data.board.id}\"},\"context\":{}}"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

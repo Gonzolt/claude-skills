@@ -1,0 +1,17 @@
+{
+  "operation_id": "getBookReviews",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "id": 2567698,
+        "count": 5,
+        "start": 0
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

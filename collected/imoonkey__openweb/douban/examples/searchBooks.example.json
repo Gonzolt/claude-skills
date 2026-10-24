@@ -1,0 +1,17 @@
+{
+  "operation_id": "searchBooks",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "count": 5,
+        "q": "三体",
+        "start": 0
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

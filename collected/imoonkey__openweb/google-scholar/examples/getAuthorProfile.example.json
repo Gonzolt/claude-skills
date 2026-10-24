@@ -1,0 +1,15 @@
+{
+  "operation_id": "getAuthorProfile",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "user": "KROUdngAAAAJ"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

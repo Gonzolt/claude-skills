@@ -1,0 +1,441 @@
+openapi: '3.1.0'
+info:
+  title: Google Flights
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+- url: https://www.google.com
+  x-openweb:
+    transport: node
+paths:
+  /travel/flights/search:
+    get:
+      operationId: searchFlights
+      summary: Search flights by route and dates — airline, times, duration, stops, price, legs, aircraft, flight numbers
+      x-openweb:
+        permission: read
+        build:
+          stable_id: gf0001
+          tool_version: 3
+          verified: true
+          signals:
+          - adapter-verified
+        adapter:
+          name: google-flights
+          operation: searchFlights
+      parameters:
+      - name: tfs
+        in: query
+        required: true
+        schema:
+          type: string
+        description: >-
+          Encoded flight search parameters (origin, destination, dates).
+          Navigate to the Google Flights search page with this parameter set.
+      - name: tfu
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Additional flight UI parameters.
+      responses:
+        '200':
+          description: Flight search results extracted from SSR data.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - origin
+                - destination
+                - flights
+                properties:
+                  origin:
+                    type: string
+                    description: Departure city and airport (e.g. "Raleigh (RDU)").
+                  destination:
+                    type: string
+                    description: Arrival city and airport (e.g. "New York (NYC)").
+                  resultCount:
+                    type: integer
+                    description: Total number of flight results.
+                  flights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        airline:
+                          type: string
+                          description: Airline name.
+                        airlineCode:
+                          type: string
+                          description: IATA airline code (e.g. "UA").
+                        origin:
+                          type: string
+                          description: Origin airport code (e.g. "RDU").
+                        destination:
+                          type: string
+                          description: Destination airport code (e.g. "LGA").
+                        departureTime:
+                          type: string
+                          description: Departure time (e.g. "5:52 PM").
+                        arrivalTime:
+                          type: string
+                          description: Arrival time (e.g. "7:30 PM").
+                        duration:
+                          type: string
+                          description: Flight duration (e.g. "1 hr 38 min").
+                        durationMinutes:
+                          type: integer
+                          description: Flight duration in minutes.
+                        stops:
+                          type: string
+                          description: Stop info ("Nonstop" or "1 stop").
+                        price:
+                          type: integer
+                          nullable: true
+                          description: Price in USD.
+                        co2Kg:
+                          type: integer
+                          nullable: true
+                          description: CO2 emissions in kg.
+                        emissionsPct:
+                          type: integer
+                          nullable: true
+                          description: Emissions percentage vs typical.
+                        legs:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              origin:
+                                type: string
+                              originAirport:
+                                type: string
+                              destination:
+                                type: string
+                              destinationAirport:
+                                type: string
+                              departureTime:
+                                type: string
+                              arrivalTime:
+                                type: string
+                              duration:
+                                type: string
+                              aircraft:
+                                type: string
+                              flightNumber:
+                                type: string
+                              airline:
+                                type: string
+  /travel/flights:
+    get:
+      operationId: getFlightOverview
+      summary: Extract flight overview and cheapest fares from a Google Flights route page — cheapest options, fastest flight, frequency
+      servers:
+      - url: https://www.google.com
+        x-openweb:
+          transport: page
+      x-openweb:
+        permission: read
+        build:
+          stable_id: gf0002
+          tool_version: 1
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: google-flights
+          operation: getFlightOverview
+      parameters:
+      - name: tfs
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Encoded flight route parameters (origin, destination).
+      - name: tfu
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Additional flight UI parameters.
+      responses:
+        '200':
+          description: Flight overview with cheapest options for a route.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  origin:
+                    type: string
+                  destination:
+                    type: string
+                  cheapestOptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        price:
+                          type: integer
+                          nullable: true
+                        airline:
+                          type: string
+                        stops:
+                          type: string
+                        duration:
+                          type: string
+                        dates:
+                          type: string
+                  fastestFlight:
+                    type: string
+                    description: Duration of the fastest nonstop.
+                  nonstopFrequency:
+                    type: string
+                    description: How often nonstop flights operate.
+                required:
+                - origin
+                - destination
+  /travel/flights/booking:
+    get:
+      operationId: getFlightBookingDetails
+      summary: Extract flight booking/itinerary details from a Google Flights detail page — legs, baggage, booking links
+      servers:
+      - url: https://www.google.com
+        x-openweb:
+          transport: page
+      x-openweb:
+        permission: read
+        build:
+          stable_id: gf0003
+          tool_version: 1
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: google-flights
+          operation: getFlightBookingDetails
+      parameters:
+      - name: tfs
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Encoded itinerary parameters.
+      - name: tfu
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Flight selection parameters. Required to view a specific itinerary.
+      responses:
+        '200':
+          description: Booking details for a specific flight itinerary.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalPrice:
+                    type: integer
+                    nullable: true
+                    description: Total round-trip price in USD.
+                  legs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                        departureTime:
+                          type: string
+                        arrivalTime:
+                          type: string
+                        airline:
+                          type: string
+                        operatedBy:
+                          type: string
+                        duration:
+                          type: string
+                        origin:
+                          type: string
+                        destination:
+                          type: string
+                        stops:
+                          type: string
+                  bagPolicies:
+                    type: array
+                    items:
+                      type: string
+                    description: Baggage policy summaries.
+                  bookWith:
+                    type: string
+                    description: Airlines to book with.
+                required:
+                - legs
+  /travel/explore:
+    get:
+      operationId: exploreDestinations
+      summary: Browse flight destinations by budget from an origin city — destination, dates, flight price, stops, duration
+      servers:
+      - url: https://www.google.com
+        x-openweb:
+          transport: page
+      x-openweb:
+        permission: read
+        build:
+          stable_id: gf0004
+          tool_version: 2
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: google-flights
+          operation: exploreDestinations
+      parameters:
+      - name: tfs
+        in: query
+        required: false
+        schema:
+          type: string
+        description: >-
+          Encoded explore parameters (origin, trip type, filters).
+          Navigate to the Google Flights explore page with origin set.
+      - name: tfu
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Additional explore UI parameters.
+      responses:
+        '200':
+          description: Destination cards with flight prices and suggested dates.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  origin:
+                    type: string
+                    description: Departure city name.
+                  destinationCount:
+                    type: integer
+                    description: Number of destinations found.
+                  destinations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        destination:
+                          type: string
+                          description: Destination city or landmark name.
+                        dates:
+                          type: string
+                          description: Suggested travel dates (e.g. "Apr 9 – 17").
+                        flightPrice:
+                          type: integer
+                          description: Round-trip flight price in USD.
+                        stops:
+                          type: string
+                          description: Stop info ("Nonstop" or "1 stop").
+                        duration:
+                          type: string
+                          description: Flight duration (e.g. "2 hr 10 min").
+                        hotelPricePerNight:
+                          type: integer
+                          nullable: true
+                          description: Estimated hotel price per night in USD.
+                required:
+                - origin
+  /travel/flights/search/insights:
+    get:
+      operationId: getPriceInsights
+      summary: Price statistics, trends, and airline options for a route — currentLowPrice, typicalPrice, priceHistory, popularAirlines
+      x-openweb:
+        permission: read
+        build:
+          stable_id: gf0005
+          tool_version: 2
+          verified: true
+          signals:
+          - adapter-verified
+        adapter:
+          name: google-flights
+          operation: getPriceInsights
+      parameters:
+      - name: tfs
+        in: query
+        required: true
+        schema:
+          type: string
+        description: >-
+          Encoded flight search parameters (origin, destination, dates).
+      responses:
+        '200':
+          description: Price insights extracted from SSR data.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  origin:
+                    type: string
+                    description: Departure city name.
+                  destination:
+                    type: string
+                    description: Arrival city name.
+                  currentLowPrice:
+                    type: integer
+                    nullable: true
+                    description: Current lowest price in USD.
+                  typicalPrice:
+                    type: integer
+                    nullable: true
+                    description: Typical price in USD for this route.
+                  priceRange:
+                    type: object
+                    nullable: true
+                    properties:
+                      low:
+                        type: integer
+                      high:
+                        type: integer
+                    description: Typical price range for the route.
+                  routePriceRange:
+                    type: object
+                    nullable: true
+                    properties:
+                      low:
+                        type: integer
+                      high:
+                        type: integer
+                    description: Full price range across all flights on this route.
+                  popularAirlines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          description: IATA airline code.
+                        name:
+                          type: string
+                          description: Airline name.
+                  priceHistory:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          description: Date (YYYY-MM-DD).
+                        price:
+                          type: integer
+                          description: Lowest price on that date in USD.
+                    description: Historical daily price trend.
+                required:
+                - origin
+                - destination

@@ -1,0 +1,337 @@
+---
+name: wiki
+description: Indexed knowledge bases with command-line tools for agents.
+disable-model-invocation: true
+---
+
+# Wiki
+
+A wiki is a structured, indexed knowledge base organized as a folder tree with
+`_index.md` files. Each folder has an index that links to its children
+(subfolders and pages), and a content section below a `***` delimiter for
+user-authored notes.
+
+Initialize a wiki in the current project and configure integrations:
+
+- `wiki init` — scaffold a new wiki with a root index
+- `wiki config` — install Obsidian plugins and the git merge driver
+- `wiki trust` — authorize a wiki to run its `.wiki/wiki.py` hook
+
+Maintain indexes as files are added and removed:
+
+- `wiki lint` — validate structure and flag issues
+- `wiki update` — sync index links with the filesystem
+- `wiki new` — create an indexed folder with an authored desc and content
+
+Browse structure, search across content, and read entries:
+
+- `wiki map` — print an indented tree overview
+- `wiki search` — rank relevant pages with SQLite FTS5
+- `wiki match` — match content with regex
+- `wiki read` — read a named entry
+
+## Usage
+
+Install the CLI from PyPI if it is not already on your `PATH`:
+
+```bash
+pipx install plasma-wiki
+```
+
+(`pip install` or `uv tool install` work too.)
+
+Then run commands directly:
+
+```bash
+wiki <command> ...
+```
+
+Run `wiki --help` for a list of commands, and `wiki <command> --help` for full
+option descriptions.
+
+## Working at scale
+
+A wiki is many small, independent pages, so wiki work parallelizes well and is
+often too large for one context. Default to sub-agents and dynamic workflows
+rather than authoring or auditing page by page yourself:
+
+- **Fan out sub-agents.** When seeding or expanding a wiki, give each
+  independent page — or each source to research and digest — to its own
+  sub-agent, then run `wiki update` once to stitch the new pages into the
+  indexes. Update adds and repairs index link rows and frontmatter only — it
+  never linkifies mentions in page prose, so author `[[...]]` cross-links by
+  hand, root-relative inside the wiki.
+- **Drive sweeps with a dynamic workflow.** When auditing, relinking, or
+  restructuring an existing wiki, pipeline its pages through a workflow so each
+  is read, revised, and verified on its own — slow pages never block fast ones.
+
+## Conventions
+
+- **`.wiki/` is the tool's namespace.** Every root carries a `.wiki/` directory
+  holding `settings.json` — the file that declares the wiki root; `wiki init`
+  writes it and `wiki update` restores a missing one — plus the derived
+  word-counts and ranked-search caches and the staged Obsidian config. Never
+  author content there; the walk skips dot-directories by construction.
+- **Exclusions are configurable.** Beyond the built-ins (dot-paths, symlinks,
+  `_index.md`), gitignore-style globs in `exclude.patterns` in
+  `.wiki/settings.json` exclude whole subtrees from indexing — never walked,
+  scaffolded, or linted, though `wiki read` still serves them. The enclosing git
+  repository's ignore rules fence the same way, with no configuration: what the
+  repo ignores is not wiki content, so a stray driver output beside tracked
+  pages is never adopted, minted an `_index.md`, or linked — delete or fence
+  residue rather than letting update sweep it in. A wiki whose own root and root
+  `_index.md` are both gitignored is exempt.
+- **Name validation is configurable.** By default the wiki rejects only
+  structural characters (`/`, `\`, `*`, `[`, `]`, `|`, `#`), a leading dot,
+  non-printable names, and the reserved `_index` stem — spaces, dashes, and
+  unicode all pass. Stricter rules (e.g. ASCII identifiers) are opt-in per wiki
+  via `naming.validate` in `.wiki/settings.json` (seed it at creation with
+  `wiki init --settings`); `wiki init` and `wiki lint` enforce whatever policy
+  is set. A name is checked as a link carries it: a page by its stem, any other
+  file by its full name, extension included. So `identifier` rejects every
+  non-Markdown file with an extension (`data.json`, `main.py`) unless
+  `naming.allow` contains `.`, and a strict wiki that keeps data files or
+  scripts beside its pages sets `"allow": "."`.
+- **Timestamps are tool-owned and configurable.** `wiki update` writes both
+  stamps when a file gains frontmatter, keeps `created:` from then on, and
+  rewrites `updated:` on every actual write — and, inside a git repository, on a
+  tracked file edited since its last commit, so run `wiki update` after a hand
+  edit rather than restamping by hand (`wiki lint` does not flag the pending
+  restamp; `wiki update --check` does). Never hand-edit a stamp; an edit goes
+  undetected unless the value stops parsing under the configured format, which
+  `wiki lint` fails. `created`/`updated` default to UTC in `%Y-%m-%dT%H:%M:%SZ`;
+  set `timestamp.timezone` (an IANA name) and `timestamp.format` (a strftime
+  string) in `.wiki/settings.json` to change them — use `%z` rather than a
+  literal `Z` for a non-UTC zone.
+- **Names are path-derived; titles are authored.** `wiki update` sets each
+  page's `name` and H1 heading to the path-joined name (e.g. `core/design`) so
+  names stay consistent with the tree structure — to rename an entry, move its
+  file rather than editing `name:`. Any index or page may carry an optional
+  authored `title:` frontmatter field, which wins its H1 (`wiki update` keeps
+  the line directly under `name:`, and adding frontmatter to a bare page seeds
+  `title:` from its authored H1); without one, a hand-edited heading is still
+  rewritten to `name`. Unset a title by deleting the line or setting
+  `title: null` — update removes it, and lowercase `null` is the only reset
+  spelling (`~`/`Null`/`NULL` render literally as the heading). Keep titles on a
+  single line, quote a title containing `: `, and prefer plain text.
+  `wiki match --field title` matches only authored titles — an unset entry has
+  no line to match. Setting `titles.required` to true in `.wiki/settings.json`
+  demands a title everywhere: update seeds a `title: null` placeholder on every
+  index and page missing one, and lint fails each placeholder until a value is
+  authored.
+- **Categories are authored and optional.** An index or page may carry a
+  `category:` frontmatter field; `wiki update` copies it into the parent index's
+  link label as a `[category] name` prefix, and `wiki map --category` filters by
+  it. Fresh frontmatter carries no `category:` line — unset one by deleting the
+  line or setting `category: null` (update removes the line; as with titles,
+  lowercase `null` is the only reset spelling). Keep categories on a single
+  line.
+- **Frontmatter order is tool-enforced.** `wiki update` keeps every block in
+  canonical order — `name`, `title`, `desc`, `category`, `tags`, `sources`,
+  `created`, `updated` — moving each field (with its block-scalar body) verbatim
+  into its slot. Custom keys are allowed: one named like `com.example` (word
+  characters, dots, dashes) keeps its relative order below the known fields,
+  above the timestamps; a key spelled any other way (one with spaces) stays with
+  the field above it.
+- **Frontmatter reads as YAML.** Field values are read the way a strict YAML
+  reader reads them — a value continued on indented lines folds into one, a
+  quoted value decodes, a space followed by `#` starts a comment, and
+  `null # comment` unsets like `null`. `wiki lint` reports a block a strict
+  reader rejects (an unquoted `: ` inside a value, a duplicate key, a body that
+  is not `key: value` pairs) as an `invalid_yaml` issue; `wiki update` still
+  repairs such a block through its line grammar, except a body that is not
+  `key: value` pairs, a mapping whose keys are not column-0 `key:` lines, or a
+  block whose repair would leave a strict reader worse off (an accepted block
+  rejected, or authored lines folded into a quoted value), which it leaves
+  untouched.
+- **Wikilinks stay inside the wiki unless a folder is allowlisted.** Every
+  wikilink (`[[...]]`) target is read from the wiki root, one rule per spelling:
+  a prefix-free target (`[[core/design]]`) must name something inside the wiki;
+  a target starting with `./` or `../` (or carrying a `.` or `..` segment
+  anywhere) must leave the wiki, so one spelling names an external file from
+  every page (`[[../math/lemmas]]` from a root-level page and from
+  `nodes/verify.md` alike) and moving a page never changes its links. Such a
+  link is live only under a folder the wiki allowlists in `links.external` in
+  `.wiki/settings.json`: a list of folder paths relative to the wiki root, each
+  climbing out of it with leading `..`, e.g.
+  `{"links": {"external": ["../src", "../math"]}}`; an entry is the literal
+  prefix of every link it admits. List the narrowest folder holding the targets,
+  and a folder, never a file. Under an allowlisted folder the target is live
+  when the file, its `.md` page, or the folder exists; a target inside another
+  wiki (a folder holding `.wiki/settings.json`) follows that wiki's own
+  settings, so a folder it indexes fails lint exactly as at home
+  (`Link [[../math/g2]] targets a folder, not a page (use [[../math/g2/_index]])`).
+  Link a file or the `_index` page, never a bare folder — stricter link checkers
+  reject a bare folder link too. A prefixed link that lands inside the wiki
+  fails lint (`points inside the wiki through './' or '../'`), naming the
+  prefix-free spelling (of the target read from the wiki root, else of the same
+  text read from the page's folder; the root itself is `_index`); so does an
+  absolute path to an in-wiki target
+  (`points inside the wiki through an absolute path`), which names the
+  prefix-free spelling when something exists there, since an absolute path
+  spells one machine's layout; and so does a prefixed link that misses under an
+  allowlisted folder while the same text read from the page's folder names
+  something in the wiki — the slip `[[../overview]]` from a nested page, meaning
+  the in-wiki `overview.md`, fails with `(use [[overview]])`. A prefixed link
+  outside every allowlisted folder fails lint whatever is on disk with
+  `points outside every links.external folder (add '../docs' to links.external in .wiki/settings.json to allow it)`,
+  adding `, or use [[overview]]` when the same text read from the page's folder
+  names something in the wiki, or the root-relative spelling of an allowlisted
+  file it reaches (`, or use [[../src/main.py]]` for `[[../../src/main.py]]`
+  from `notes/meeting.md`, one `..` too many). Link when the reader should open
+  the file; a passing mention, or anything outside every allowlisted folder,
+  goes in backticks. The allowlist is a lint rule alone: `wiki read` never
+  serves an external target (use `wiki read --path <its root>` for another wiki,
+  `cat` for a file), generated index rows never carry one, and `wiki map` never
+  shows an external folder. Obsidian cannot see outside the vault, so an
+  external link shows unresolved there; the bundled Wiki Root Links plugin,
+  which `wiki init` and `wiki config` install, makes Obsidian read the link from
+  the wiki root and turns a click on it into a notice (or opens a markdown
+  target in the sibling wiki's own registered vault), while stock Obsidian reads
+  it from the note's folder and a click creates the missing target at that path,
+  as folders outside the vault — do not click it there.
+  `wiki match '\[\[\.\.?/' --lines` lists every link opening with `./` or `../`
+  (code samples included; the `wiki lint` findings are the authoritative list).
+- **Lint's output contract.** `wiki lint` prints issues to stdout and soft notes
+  to stderr; exit 1 means exactly "issues found" (0 clean, 2 a command error) —
+  notes never gate. Every issue prints, but a note kind that repeats prints as
+  one count line (`12 indexes have empty content`); run `wiki lint --full` to
+  see each note's path. A script must branch on the exit code or read
+  `wiki lint --json` (one JSON document on stdout carrying every finding typed:
+  an explicit `issue`/`note` severity, a machine `kind`, and per-kind payload
+  fields beside the prose `text`), never classify findings by scraping the prose
+  streams: a stderr note is not a blocking issue.
+- **Stale wikilinks are soft notes (issues under `lint.strict`).** A `[[...]]`
+  in index or page prose whose target no longer exists — inside the wiki or
+  under a `links.external` folder — draws a stderr note from `wiki lint` without
+  failing the run; the note suggests the root-relative form the author likely
+  meant when one resolves (an absolute spelling of an allowlisted file draws its
+  `../` spelling, and a target missing only by a trailing slash the same path
+  without it). Setting `lint.strict` to true in `.wiki/settings.json` makes each
+  one a hard issue instead, with the same line and the same `link_stale` kind in
+  `--json`. A `links.external` entry naming no folder on this machine draws one
+  note per run
+  (`links.external entry '../src' names no folder on this machine; links into it are not checked`)
+  and the links into it draw no notes — an environment condition, so leave them
+  alone. Broken links in the generated index link block — the rows `wiki update`
+  maintains — are hard issues until the next update prunes them (each removal
+  announced, with the cause named when the target is merely excluded rather than
+  deleted), as is a prose wikilink naming a folder rather than the folder's
+  index page — in this wiki or in another wiki a `links.external` folder admits:
+  link `[[folder/_index]]`, never `[[folder]]` — a `./` or `../` prose link that
+  lands inside the wiki (`points inside the wiki through './' or '../'`), which
+  names the prefix-free spelling to write instead, an absolute prose link that
+  lands inside the wiki (`points inside the wiki through an absolute path`),
+  which names the prefix-free spelling when something exists there, and a `./`
+  or `../` prose link outside every `links.external` folder
+  (`points outside every links.external folder`), which names the entry to add.
+- **Descriptions end in a period.** `wiki lint` fails a `desc` (or an authored
+  link description) that lacks a trailing period; the seeded `...` placeholder
+  only draws a soft note. Author the desc in the child page's frontmatter —
+  `wiki update` copies it onto the parent index's link line. A desc containing
+  `: ` or ` #` must be YAML-quoted — a strict reader rejects the unquoted colon
+  on a one-line desc or on a continuation line of one (`wiki lint` reports it as
+  `invalid_yaml`; under a bare `desc:` key an indented `Key: value` line nests a
+  mapping instead, which no strict reader shows as text and lint does not
+  report) and reads ` #` as a comment (lint names it as the likely cause only
+  when the cut-short desc loses its period); surrounding quotes are stripped
+  when the value is read. Never hand-wrap a desc mid-word or onto a list-marker
+  start — let the block scalar carry the breaks; lint fails the wrap artifacts
+  (a hyphen dangle, a phantom list item).
+- **Fill in auto-created index descs.** `wiki update` creates a missing
+  `_index.md` for every new directory with a `desc: ...` placeholder and
+  announces the batch in its condensed summary
+  (`Created N new indexes (fill in their descs)`; run with `--full` for the
+  per-path `New index:` lines). Fill in the desc right after the update — lint
+  soft-notes the placeholder until you do. For a deliberate creation (an
+  adoption ceremony's mechanical step), prefer
+  `wiki new <folder> --desc ... --content ...`: it requires both authored inputs
+  — refusing blanks and placeholders outright, descs are never auto-stubbed —
+  and wires the folder's rows and the parent's new row in the same pass, so the
+  adoption lands lint-complete. The wiring is a scoped `wiki update` of the
+  parent subtree (the whole wiki for a top-level folder), so pending maintenance
+  in that scope — adoptions, prunes — lands in the same run.
+- **Bare pages are adopted loudly.** A page with no frontmatter gains it on the
+  next `wiki update` — with `title:` seeded from its authored H1, while a page
+  with no H1 gains the path-joined heading in its body, never a seeded title —
+  and each adoption is announced (`Adopted N bare pages (frontmatter added)` in
+  the condensed summary; `--full` prints the per-page lines). Until then
+  `wiki lint` names the page as a hard issue
+  (`Bare page (no frontmatter); update will adopt it`) alongside the adoption
+  diff.
+- **Suppress lint locally with a `no-lint` region.** A page that must display
+  otherwise-flagged content (sample conflict markers, stale link examples) wraps
+  those lines in `<!-- start: no-lint -->` ... `<!-- end: no-lint -->`, which
+  silences the positional rules — hard issues and soft notes alike — for just
+  that span. Regions never affect file-level checks, and a dangling or nested
+  marker is itself a hard lint issue.
+- **Give markdown formatters the wiki plugin.** The `***` delimiter and
+  `[[wikilinks]]` are load-bearing syntax; mdformat/prettier-style hooks rewrite
+  `***` to `---` and escape the brackets, demoting the generated link block to
+  plain text. `wiki update` repairs a mangled index and `wiki lint` names the
+  damage signatures (escaped wikilinks, a thematic break standing where `***`
+  belongs), but don't rely on the repair: for mdformat add the `mdformat-wiki`
+  plugin (under pre-commit, `additional_dependencies: [mdformat-wiki]` on the
+  hook, dropping a coexisting `mdformat-frontmatter` — both register a
+  frontmatter renderer and whichever is discovered first wins), which makes wiki
+  faces round-trip byte-identically; for formatters with no plugin lane (e.g.
+  prettier) exclude the wiki root instead (`wiki/` in `.prettierignore`).
+- **The git merge driver resolves only the generated region.** For `_index.md`
+  files it first gives ours the later of the two sides' `updated` stamps and the
+  earlier normalized `created`, compared as instants (an unparseable stamp keeps
+  ours'). It then normalizes the regenerated `name`/`updated` keys to *ours*
+  (plus `created` whenever the base index carries no real stamp — an add/add
+  merge, a hand-written or imported index), and resolves the link block to the
+  union of both sides' rows — ours' layout wins, rows present only in theirs
+  ride over with their desc continuations, a row both sides carry keeps ours'
+  text unless only theirs changed it against the base, and a row the base had
+  that one side deleted and the other left alone stays deleted, so a merge keeps
+  either side's additions and an edit only one side made (when both sides edit
+  the same row, ours wins). A formatter-escaped row (`\[\[`) reads as
+  `wiki update` reads it, so an escaped side merges like any other; only a line
+  in the damage shape that still reads as no row holds that side's deletions
+  until the next update. It three-way merges everything authored — the remaining
+  frontmatter fields (`title`/`desc`/`created`/`category`/`tags`/`sources`) and
+  the user content below `***` — which can still conflict for hand-resolution. A
+  clean merge then writes the H1 from the merged `title:` (else `name:`) and
+  sorts the rows into the order `wiki update` writes, with the wiki's own class
+  (a trusted hook's `category_order` included) when that class leaves ours'
+  index as written — a check that sees a category order only where ours' rows
+  span two or more categories, so an embedder's own order can still be re-sorted
+  into this class's — so a clean merge in which each side only added, deleted or
+  retitled entries passes `update --check` and `lint` as merged. A side missing
+  its `***` entirely (formatter damage) can't be split into regions, so it
+  conflicts whole-file with a hint comment naming the repair — restore the `***`
+  on that branch (`wiki update` does it), then redo the merge. Run
+  `wiki update --check` after a merge and `wiki update` when it reports changes
+  — a row one side changed and the other deleted, both sides changing one row, a
+  merge that changes the hook's `category_order`, or a conflict resolved by
+  hand. Every other page the wiki manages gets a plain three-way text merge
+  after both sides take the later `updated` stamp (and, over a base with no
+  `created`, the earlier `created`), so a page whose sides differ only in stamps
+  merges clean; an excluded or gitignored page gets a plain text merge, and
+  Markdown outside the wiki never reaches the driver. `init`/`config` register
+  the driver in local git config and write `**/_index.md merge=wiki` to the
+  repository root's `.gitattributes` and `*.md merge=wiki` to one in the wiki
+  root, in the working tree only — you stage and commit them yourself, and each
+  clone runs `wiki config` once to register the driver. Without `wiki` on PATH
+  the driver falls back to git's own text merge.
+- **Leave new-directory index bodies empty during concurrent work.** When
+  sibling branches both create the same new directory, its two `_index.md`s
+  merge add/add with no common ancestor: the generated region resolves
+  automatically — including the seeded `created` stamps, which are `wiki update`
+  churn on both sides — but body prose authored below `***` on both sides
+  conflicts for hand-union (empty or identical bodies merge clean). Concurrent
+  cohorts should leave a new directory's index body empty until after the merge
+  wave, then author it once. The merge driver plants a one-line HTML-comment
+  hint above such add/add conflict markers naming this convention — delete it as
+  you resolve.
+- **A `.wiki/wiki.py` hook needs explicit trust.** A wiki may ship a
+  `.wiki/wiki.py` (a custom `Wiki` subclass) that runs code with the user's
+  privileges, so `wiki` refuses to load an untrusted hook — every command that
+  resolves the wiki fails, naming the hook and pointing at `wiki trust`. This is
+  a security decision for the human: surface the error and let the user run
+  `wiki trust` for a wiki they have vetted, rather than running it yourself or
+  working around the refusal. A hookless wiki needs no trust; trust is recorded
+  per resolved root in `~/.wiki/settings.json` (`WIKI_CONFIG_DIR` overrides the
+  config home).

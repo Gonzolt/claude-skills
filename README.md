@@ -8,6 +8,8 @@ An overview of every Claude Code skill I have installed: **194 skills** in total
 | [Project skills](#project-skills) (`project/`) | 43 |
 | **Total** | **194** |
 
+Plus **10,375 collected skills** from 253 open-source repos in [`collected/`](collected/README.md): obra/superpowers, Skill_Seekers, and every repo linked from the awesome-claude-code and awesome-claude-skills lists, each with its upstream license and source link.
+
 Left out on purpose: `personal/refton/repo` and `personal/flux/repo` (cloned upstream model repos, ~5 GB) and `personal/imagemagick-skill/bin` (the ImageMagick binary). The skill instructions and scripts are all here.
 
 ## Personal skills

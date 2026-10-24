@@ -1,0 +1,370 @@
+openapi: 3.1.0
+info:
+  title: yelp
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-06T01:00:00.000Z
+    requires_auth: false
+servers:
+  - url: https://www.yelp.com
+    x-openweb:
+      transport: node
+paths:
+  /search_suggest/v2/prefetch:
+    get:
+      operationId: autocompleteBusinesses
+      summary: Autocomplete businesses and categories by prefix and location
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: yelp
+          operation: autocompleteBusinesses
+        build:
+          verified: true
+          stable_id: 63a017c451fa4a34
+          signature_id: 056612ff7b984329
+          tool_version: 1
+          signals:
+            - adapter-verified
+      parameters:
+        - name: loc
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Location to search near (e.g. "San Francisco", "New York").
+          example: "San Francisco, CA"
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search prefix text (e.g. "piz" for pizza, "coff" for coffee).
+          example: piz
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Autocomplete suggestions for the given prefix
+                items:
+                  type: object
+                  required:
+                    - title
+                    - type
+                  properties:
+                    title:
+                      type: string
+                      description: Display title of the suggestion
+                    query:
+                      type: string
+                      description: Search query to use when selecting this suggestion
+                    type:
+                      type: string
+                      description: Suggestion type — "common" (search term), "business", or "category"
+                    subtitle:
+                      type: string
+                      description: Secondary text (e.g. address for business suggestions)
+                    redirect_url:
+                      type: string
+                      description: Direct URL for business suggestions
+                    thumbnail:
+                      type: object
+                      description: Thumbnail image for business suggestions
+                      properties:
+                        url:
+                          type: string
+                        type:
+                          type: string
+                    refinements:
+                      type: array
+                      description: Sub-category refinements (e.g. plumber specialties)
+                      items:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          query:
+                            type: string
+  /search/businesses:
+    get:
+      operationId: searchBusinesses
+      summary: Search for businesses by keyword and location
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          signals:
+            - adapter-verified
+        extraction:
+          type: page_global_data
+          page_url: /search
+          expression: |
+            (() => {
+              const scripts = Array.from(document.querySelectorAll('script[type="application/json"]'));
+              const large = scripts.find(s => (s.textContent?.length || 0) > 50000);
+              let ssrData = null;
+              if (large) {
+                let text = large.textContent || '';
+                if (text.startsWith('<!--')) text = text.slice(4);
+                if (text.endsWith('-->')) text = text.slice(0, -3);
+                try { ssrData = JSON.parse(text.trim()); } catch {}
+              }
+
+              const lp = ssrData?.legacyProps;
+              const spp = lp?.searchAppProps?.searchPageProps;
+              const ssrItems = spp?.mainContentComponentsListProps || [];
+              const ctx = spp?.searchContext || lp?.searchContext || {};
+
+              const ssrMap = {};
+              for (const item of ssrItems) {
+                if (!item.bizId) continue;
+                const b = item.searchResultBusiness;
+                ssrMap[item.bizId] = {
+                  bizId: item.bizId,
+                  name: b?.name || null,
+                  alias: b?.alias || null,
+                  rating: b?.rating ?? null,
+                  reviewCount: b?.reviewCount ?? null,
+                  priceRange: b?.priceRange || null,
+                  phone: b?.phone || null,
+                  categories: b?.categories ? b.categories.map(c => c.title) : null,
+                  neighborhoods: b?.neighborhoods || null,
+                  address: b?.formattedAddress || null,
+                  isAd: item.isAd ?? b?.isAd ?? false,
+                  businessUrl: item.businessUrl || (b?.alias ? '/biz/' + b.alias : null),
+                  snippet: item.snippet?.text
+                    ?.replace(/\[\[HIGHLIGHT\]\]/g, '')
+                    ?.replace(/\[\[ENDHIGHLIGHT\]\]/g, '')
+                    || null,
+                };
+              }
+
+              const cards = document.querySelectorAll('[data-testid="serp-ia-card"]');
+              const domResults = Array.from(cards).map((card) => {
+                const allLinks = Array.from(card.querySelectorAll('a'));
+                const nameLink = allLinks.find(a => {
+                  const href = a.getAttribute('href') || '';
+                  const text = a.textContent?.trim() || '';
+                  return (href.includes('/biz/') || href.includes('/adredir')) && text.length > 1 && text.length < 100;
+                });
+                const name = nameLink?.textContent?.trim() || null;
+
+                const href = nameLink?.getAttribute('href') || '';
+                let alias = null;
+                const bizMatch = href.match(/\/biz\/([^?&]+)/);
+                if (bizMatch) alias = bizMatch[1];
+                if (!alias && href.includes('/adredir')) {
+                  const redirectMatch = href.match(/redirect_url=.*?\/biz\/([^?&%]+)/);
+                  if (redirectMatch) alias = decodeURIComponent(redirectMatch[1]);
+                }
+
+                const isAd = href.includes('/adredir');
+
+                const ratingEl = card.querySelector('[aria-label*="star rating"]');
+                const ratingLabel = ratingEl?.getAttribute('aria-label') || '';
+                const ratingMatch = ratingLabel.match(/([\d.]+)\s*star/);
+                const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+
+                const allText = card.innerText || '';
+
+                // Review count: try multiple patterns
+                let reviewCount = null;
+                const rcParens = allText.match(/\((\d[\d,]*)\s*reviews?\)/i);
+                if (rcParens) { reviewCount = parseInt(rcParens[1].replace(/,/g, ''), 10); }
+                else {
+                  const rcBare = allText.match(/(\d[\d,]*)\s+reviews?\b/i);
+                  if (rcBare) reviewCount = parseInt(rcBare[1].replace(/,/g, ''), 10);
+                }
+
+                // Price range: match $ signs near category/hours context
+                let priceRange = null;
+                const priceM = allText.match(/(?:^|\n|\s)(\${1,4})(?:\s|$|\n|·|Closed|Open)/m);
+                if (priceM) priceRange = priceM[1];
+
+                // Phone number
+                let phone = null;
+                const phoneM = allText.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+                if (phoneM) phone = phoneM[0];
+
+                // Address: look for street-pattern text in the card
+                let address = null;
+                const lines = allText.split('\n').map(l => l.trim()).filter(Boolean);
+                for (const line of lines) {
+                  if (/^\d+\s+\w/.test(line) && line.length < 80 && !/review|star|open|close|\$/i.test(line)) {
+                    address = line;
+                    break;
+                  }
+                }
+
+                const catEl = card.querySelector('[data-testid="serp-ia-categories"]');
+                const categories = catEl
+                  ? Array.from(catEl.querySelectorAll('a')).map(c => c.textContent?.trim()).filter(Boolean)
+                  : [];
+
+                let neighborhood = null;
+                const ratingLineIdx = lines.findIndex(l => /^\d.*star/.test(l) || /^\(\d/.test(l));
+                if (ratingLineIdx >= 0) {
+                  for (let i = ratingLineIdx + 1; i < lines.length; i++) {
+                    const line = lines[i];
+                    if (/^[A-Z][a-zA-Z\s-]+$/.test(line) && !/Closed|Open/.test(line) && line.length < 40) {
+                      neighborhood = line;
+                      break;
+                    }
+                  }
+                }
+
+                const snippetMatch = allText.match(/"([^"]{20,})"/);
+                const snippet = snippetMatch ? snippetMatch[1].replace(/\.{3}$/, '…') : null;
+
+                return { name, alias, rating, reviewCount, priceRange, phone, address, categories, neighborhood, isAd, snippet };
+              });
+
+              const businesses = [];
+              for (let i = 0; i < Math.max(Object.keys(ssrMap).length, domResults.length); i++) {
+                const dom = domResults[i];
+                if (!dom) continue;
+
+                let ssr = null;
+                if (dom.alias) ssr = Object.values(ssrMap).find(s => s.alias === dom.alias);
+                if (!ssr && dom.name) ssr = Object.values(ssrMap).find(s => s.name === dom.name);
+
+                businesses.push({
+                  name: ssr?.name || dom.name,
+                  alias: ssr?.alias || dom.alias,
+                  url: ssr?.alias ? '/biz/' + ssr.alias : (dom.alias ? '/biz/' + dom.alias : null),
+                  rating: ssr?.rating ?? dom.rating,
+                  reviewCount: ssr?.reviewCount ?? dom.reviewCount,
+                  priceRange: ssr?.priceRange || dom.priceRange || null,
+                  phone: ssr?.phone || dom.phone || null,
+                  categories: ssr?.categories || (dom.categories.length ? dom.categories : []),
+                  neighborhoods: ssr?.neighborhoods || (dom.neighborhood ? [dom.neighborhood] : []),
+                  address: ssr?.address || dom.address || null,
+                  isAd: ssr?.isAd ?? dom.isAd,
+                  snippet: ssr?.snippet || dom.snippet || null,
+                });
+              }
+
+              return {
+                businesses,
+                totalResults: ctx.totalResults ?? null,
+                resultsPerPage: ctx.resultsPerPage ?? null,
+                startResult: ctx.startResult ?? null,
+              };
+            })()
+      parameters:
+        - name: find_desc
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search term (e.g. "pizza", "restaurants", "plumber").
+          example: pizza
+        - name: find_loc
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Location to search in (e.g. "San Francisco, CA", "New York, NY").
+          example: "San Francisco, CA"
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset (results per page is 10).
+          example: 0
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - businesses
+                properties:
+                  businesses:
+                    type: array
+                    description: List of matching businesses
+                    items:
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                          description: Business display name
+                        alias:
+                          type:
+                            - string
+                            - "null"
+                          description: URL-safe business alias (e.g. "joes-pizza-san-francisco")
+                        url:
+                          type:
+                            - string
+                            - "null"
+                          description: Business page URL on Yelp
+                        rating:
+                          type:
+                            - number
+                            - "null"
+                          description: Average star rating (1.0–5.0)
+                        reviewCount:
+                          type:
+                            - integer
+                            - "null"
+                          description: Total number of reviews
+                        priceRange:
+                          type:
+                            - string
+                            - "null"
+                          description: Price level indicator (e.g. "$", "$$", "$$$")
+                        phone:
+                          type:
+                            - string
+                            - "null"
+                          description: Business phone number
+                        categories:
+                          type: array
+                          description: Business category labels (e.g. "Pizza", "Italian")
+                          items:
+                            type: string
+                        neighborhoods:
+                          type: array
+                          description: Neighborhood names where the business is located
+                          items:
+                            type: string
+                        address:
+                          type:
+                            - string
+                            - "null"
+                          description: Street address of the business
+                        isAd:
+                          type: boolean
+                          description: Whether this result is a sponsored/ad listing
+                        snippet:
+                          type:
+                            - string
+                            - "null"
+                          description: Review snippet or highlight text
+                  totalResults:
+                    type:
+                      - integer
+                      - "null"
+                    description: Total number of matching businesses
+                  resultsPerPage:
+                    type:
+                      - integer
+                      - "null"
+                    description: Number of results returned per page
+                  startResult:
+                    type:
+                      - integer
+                      - "null"
+                    description: Offset index of the first result in this page

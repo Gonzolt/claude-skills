@@ -1,0 +1,25 @@
+{
+  "name": "instacart",
+  "display_name": "Instacart",
+  "version": "2.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://www.instacart.com",
+  "description": "Instacart grocery search, store products, and nearby stores with delivery ETAs — GraphQL API via persisted queries",
+  "requires_auth": false,
+  "dependencies": {
+    "searchProducts → getStoreProducts": "searchProducts finds products; getStoreProducts browses by store department"
+  },
+  "stats": {
+    "operation_count": 3,
+    "l1_count": 0,
+    "l2_count": 0,
+    "l3_count": 3,
+    "ws_count": 0
+  },
+  "last_verified": "",
+  "quarantined": false,
+  "fingerprint": {
+    "response_shape_hash": "",
+    "last_validated": ""
+  }
+}

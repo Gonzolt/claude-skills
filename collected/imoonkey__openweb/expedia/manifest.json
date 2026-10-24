@@ -1,0 +1,11 @@
+{
+  "name": "expedia",
+  "version": "1.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://www.expedia.com",
+  "compiled_at": "2026-04-01T23:00:00Z",
+  "requires_auth": false,
+  "requires_browser": true,
+  "last_verified": null,
+  "quarantined": false
+}

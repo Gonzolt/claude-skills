@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Schliff — Skill Structural Scorer
+
+Computes a composite structural score across 7 dimensions.
+Used during the autonomous improvement loop to decide keep/discard.
+
+IMPORTANT: This is a STRUCTURAL score — it measures file organization,
+keyword coverage, and eval suite completeness. It does NOT measure whether
+the skill actually works correctly at runtime. For runtime validation,
+use the --runtime flag or run runtime-evaluator.py separately.
+
+Usage:
+    python score-skill.py /path/to/SKILL.md [--eval-suite eval.json] [--json]
+
+Outputs composite score and per-dimension breakdown.
+"""
+
+import argparse
+import json
+import sys
+
+from scoring import (
+    compute_composite,
+    explain_score_change,  # noqa: F401  # re-exported: integration tests load this module and call it
+    score_diff,
+    score_runtime,
+)
+from scoring.formats import detect_format
+from scoring.registry import get_weights
+from shared import build_scores
+from shared import invalidate_cache as _shared_invalidate_cache
+
+
+def invalidate_cache(skill_path: str) -> None:
+    """Invalidate the file cache for a given skill path.
+
+    Public API — delegates to shared.invalidate_cache (single cache).
+    """
+    _shared_invalidate_cache(skill_path)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Schliff Structural Scorer")
+    parser.add_argument("skill_path", help="Path to SKILL.md")
+    parser.add_argument("--eval-suite", help="Path to eval suite JSON", default=None)
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--diff", action="store_true", help="Include diff analysis")
+    parser.add_argument("--diff-ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1)")
+    parser.add_argument("--no-clarity", action="store_true", help="Exclude clarity dimension (included by default)")
+    parser.add_argument("--runtime", action="store_true",
+                        help="Enable runtime scoring dimension (invokes claude CLI)")
+    parser.add_argument("--weights", default=None,
+                        help="Custom dimension weights as key=value pairs, e.g. "
+                             "'structure=0.3,triggers=0.4,efficiency=0.3'. "
+                             "Values are normalized to sum to 1.0.")
+    args = parser.parse_args()
+
+    # The CLI owns how a named suite is read: a missing or unusable one is an
+    # error, never silently replaced by the auto-discovered sibling (#250).
+    from cli import _load_eval_suite_from_args
+    eval_suite = _load_eval_suite_from_args(args)
+
+    # The registry owns which dimensions a format has. A hand-listed SKILL.md set
+    # scored an AGENTS.md without operational_coverage, its heaviest dimension.
+    fmt = detect_format(args.skill_path)
+    scores = build_scores(args.skill_path, eval_suite, fmt=fmt)
+    # Not in any registry list, but this script's JSON has always carried it.
+    scores["runtime"] = score_runtime(args.skill_path, eval_suite, enabled=args.runtime)
+
+    # Clarity dimension (default on, opt-out with --no-clarity). Only for the
+    # skill.md family, where it weighs 0.05: the composite uses a full
+    # denominator, so a popped dimension counts as zero; on system_prompt the
+    # flag would zero a 0.15-weight dimension. Same guard as dashboard.py.
+    if args.no_clarity and fmt in ("skill.md", "claude.md", "cursorrules"):
+        scores.pop("clarity", None)
+
+    # Parse custom weights if provided
+    custom_weights = None
+    if args.weights:
+        # The format's profile owns its dimension names: a fixed list rejected
+        # every system_prompt-only dimension and accepted names it then ignored.
+        valid_dimensions = set(get_weights(fmt))
+        custom_weights = {}
+        for pair in args.weights.split(","):
+            pair = pair.strip()
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                dim_name = k.strip()
+                if dim_name not in valid_dimensions:
+                    print(f"Error: unknown dimension '{dim_name}' — valid: {', '.join(sorted(valid_dimensions))}", file=sys.stderr)
+                    sys.exit(1)
+                try:
+                    custom_weights[dim_name] = float(v.strip())
+                except ValueError:
+                    print(f"Error: invalid weight value for '{dim_name}': '{v.strip()}' — expected a number", file=sys.stderr)
+                    sys.exit(1)
+
+    composite_result = compute_composite(scores, custom_weights, fmt=fmt)
+
+    result = {
+        "skill_path": args.skill_path,
+        "composite_score": composite_result["score"],
+        "score_type": composite_result["score_type"],
+        "confidence": {
+            "measured": composite_result["measured_dimensions"],
+            "total": composite_result["total_dimensions"],
+            "weight_coverage": composite_result["weight_coverage"],
+            "unmeasured": composite_result["unmeasured"],
+        },
+        "warnings": composite_result["warnings"],
+        "confidence_notes": composite_result.get("confidence_notes", {}),
+        "dimensions": {k: round(v["score"], 1) if isinstance(v["score"], float) else v["score"] for k, v in scores.items()},
+        "trigger_precision": scores.get("triggers", {}).get("precision"),
+        "trigger_recall": scores.get("triggers", {}).get("recall"),
+        "issues": {k: v["issues"] for k, v in scores.items() if v.get("issues")},
+        "details": {k: v["details"] for k, v in scores.items() if v["details"]},
+    }
+
+    # Diff analysis (opt-in)
+    if args.diff:
+        diff_analysis = score_diff(args.skill_path, args.diff_ref)
+        result["diff_analysis"] = diff_analysis
+        # NOTE: per-dimension score_explanations are intentionally not emitted
+        # here. explain_score_change requires the previous run's per-dimension
+        # scores as old_scores; with an empty {} baseline every measured
+        # dimension fabricates a "0 -> N" delta that is pure noise. Until a real
+        # baseline source (prior --json output / history) is wired in, emit only
+        # diff_analysis, which is the real git-derived signal/noise signal.
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"\n{'='*60}")
+        score_type = "Structural+Runtime" if args.runtime else "Structural"
+        print(f"  Schliff {score_type} Score: {composite_result['score']}/100")
+
+        # Show confidence warning
+        mc = composite_result['measured_dimensions']
+        tc = composite_result['total_dimensions']
+        wc = composite_result['weight_coverage']
+        if mc < tc:
+            print(f"  [{mc}/{tc} dimensions measured, {wc:.0%} coverage]")
+
+        print(f"{'='*60}")
+        for dim, data in scores.items():
+            s = data["score"]
+            indicator = "\u2713" if s >= 70 else "\u25b3" if s >= 50 else "\u2717" if s >= 0 else "\u2014"
+            score_str = f"{s}" if s >= 0 else "n/a"
+            # Show precision/recall inline for triggers dimension
+            extra = ""
+            if dim == "triggers" and "precision" in data and "recall" in data:
+                extra = f"  (P:{data['precision']:.0f}% R:{data['recall']:.0f}%)"
+            print(f"  {indicator} {dim:15s} {score_str:>5s}{extra}")
+        print(f"{'='*60}")
+
+        # Show warnings (partial-coverage guidance reads as an invitation, not a penalty)
+        for warning in composite_result.get("warnings", []):
+            glyph = "\u2139" if "eval suite" in warning.lower() else "\u26a0"
+            print(f"\n  {glyph}  {warning}")
+
+        all_issues = [i for v in scores.values() for i in v.get("issues", [])]
+        if all_issues:
+            print("\n  Issues found:")
+            for issue in all_issues:
+                print(f"    \u2022 {issue}")
+        print()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        # Structured error output for --json callers
+        if "--json" in sys.argv:
+            json.dump({"error": str(e), "composite_score": 0, "dimensions": {}}, sys.stdout)
+            print()
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,53 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'"Segoe UI","Microsoft YaHei",sans-serif','fontSize':'14px','lineColor':'#64748b'}}}%%
+flowchart TB
+    classDef accepted fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#064e3b
+    classDef rejected fill:#fecaca,stroke:#ef4444,stroke-width:2px,color:#7f1d1d
+    classDef branched fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95
+    classDef restored fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+    classDef dir fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155,stroke-dasharray:3 3
+    classDef current fill:#4f46e5,stroke:#4338ca,stroke-width:2px,color:#ffffff
+
+    subgraph MainPath["主路径 Main Path"]
+        direction TB
+        R1["Round 1<br/>INN-001 算力负载感知 ✓<br/>INN-002 密钥分片存储 ✓<br/>INN-003 审计日志压缩 ✗"]
+        R2["Round 2<br/>INN-004 动态迁移决策树 ✓<br/>INN-005 多签审计锚点 ⟿"]
+        R3["Round 3<br/>INN-006 安全共识协议 ✓<br/>最终综合评分 8.7/10"]
+    end
+
+    R1 --> R2 --> R3
+    class R1 accepted
+    class R2 current
+    class R3 accepted
+    class INN-003 rejected
+    class INN-005 branched
+
+    subgraph Branch1["分支 branch-1：硬件实现探索"]
+        B1["INN-005 探索硬件TPM方案"]
+        B2["INN-007 硬件密钥锚点 ✓"]
+    end
+    B1 --> B2
+    class B1,B2 branched
+
+    R2 -.->|fork| B1
+
+    INN003["INN-003 审计日志压缩<br/>✗ 缺乏新颖性"]
+    class INN003 rejected
+
+    RESTORE["恢复创新点<br/>添加差异化要素"]
+    class RESTORE restored
+
+    INN003 -.->|restore| RESTORE
+    RESTORE -.->|可选加入<br/>新轮次| R3
+
+    subgraph Storage[".brainstorm/ 目录结构"]
+        direction LR
+        P["path.json<br/>元数据·边·当前节点"]
+        N["nodes/<br/>round-1.json<br/>round-2.json<br/>round-3.json"]
+        S["snapshots/<br/>round-1-innovations.json<br/>..."]
+        BR["branches/<br/>branch-1/"]
+    end
+    class Storage dir
+    class P,N,S,BR dir
+
+    R3 -.->|持久化| P
+    R3 -.->|快照| N

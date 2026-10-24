@@ -1,0 +1,152 @@
+use crate::language_parsers::{
+    Comment, CommentsParser, LanguageParser, LanguageParserImpl, TreeSitterCommentsParser, Visit,
+    c_style_and_doc_line_and_block_comment_text,
+};
+
+/// Returns a [`LanguageParser`] for Java.
+pub(super) fn parser() -> anyhow::Result<impl LanguageParser> {
+    Ok(LanguageParserImpl::new(comments_parser()?))
+}
+
+fn comments_parser() -> anyhow::Result<impl CommentsParser> {
+    let java_language = tree_sitter_java::LANGUAGE.into();
+    let parser = TreeSitterCommentsParser::new(
+        &java_language,
+        Box::new(|node, source_code| {
+            // A text block (`"""..."""`) is a `string_literal`, and tree-sitter can nest a
+            // comment-shaped node inside it; its text is string content, not a source comment.
+            if node.kind() == "string_literal" {
+                return Visit::Break(None);
+            }
+            match c_style_and_doc_line_and_block_comment_text(
+                node,
+                source_code,
+                "line_comment",
+                "block_comment",
+            ) {
+                Some(text) => Visit::Break(Some(Comment::from_node(node, source_code, text))),
+                None => Visit::Continue,
+            }
+        }),
+    )?;
+    Ok(parser)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Position, language_parsers::Comment};
+
+    #[test]
+    fn real_block_is_parsed_while_text_block_marker_is_ignored() -> anyhow::Result<()> {
+        let contents = r#"class Example {
+    // <block name="real">
+    int answer = 42;
+    // </block>
+    String template = """
+        // <block name="fake">
+        this text lives inside a Java text block
+        // </block>
+        """;
+}
+"#;
+        let blocks = parser()?
+            .parse_blocks(contents)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let names: Vec<&str> = blocks
+            .iter()
+            .map(|block| block.attributes["name"].as_str())
+            .collect();
+        assert_eq!(names, ["real"]);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_comments_correctly() -> anyhow::Result<()> {
+        let mut comments_parser = comments_parser()?;
+
+        let blocks: Vec<Comment> = comments_parser
+            .parse(
+                r#"
+        /**
+         * This is a simple Java program demonstrating different types of comments.
+         * 
+         * @version 1.0
+         */
+        public class CommentExample {
+        
+            public static void main(String[] args) {
+                // This is a single-line comment.
+                System.out.println("Hello, World!"); // Prints a message to the console.
+        
+                /*
+                 * This is a multi-line comment.
+                 * It can span multiple lines.
+                 */
+                int number = 42; /* Assigning a value to the variable */
+        
+                /** This is a single-line doc-comment. */
+                printMessage();
+            }
+        
+            /**
+             * Prints a sample message to the console.
+             */
+            public static void printMessage() {
+                System.out.println("/**This is a method with a Javadoc comment.*/");
+            }
+        }
+        /// Markdown doc comment.
+        "#,
+            )
+            .collect();
+
+        assert_eq!(
+            blocks,
+            vec![
+                Comment {
+                    position_range: Position::new(2, 9)..Position::new(6, 12),
+                    source_range: 9..144,
+                    comment_text: "   \n           This is a simple Java program demonstrating different types of comments.\n           \n           @version 1.0\n           ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(10, 17)..Position::new(10, 50),
+                    source_range: 261..294,
+                    comment_text: "   This is a single-line comment.".to_string()
+                },
+                Comment {
+                    position_range: Position::new(11, 54)..Position::new(11, 89),
+                    source_range: 348..383,
+                    comment_text: "   Prints a message to the console.".to_string()
+                },
+                Comment {
+                    position_range: Position::new(13, 17)..Position::new(16, 20),
+                    source_range: 409..527,
+                    comment_text: "  \n                   This is a multi-line comment.\n                   It can span multiple lines.\n                   ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(17, 34)..Position::new(17, 73),
+                    source_range: 561..600,
+                    comment_text: "   Assigning a value to the variable   ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(19, 17)..Position::new(19, 58),
+                    source_range: 626..667,
+                    comment_text: "    This is a single-line doc-comment.   ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(23, 13)..Position::new(25, 16),
+                    source_range: 735..809,
+                    comment_text: "   \n               Prints a sample message to the console.\n               ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(30, 9)..Position::new(30, 34),
+                    source_range: 975..1000,
+                    comment_text: "    Markdown doc comment.".to_string()
+                }
+            ]
+        );
+
+        Ok(())
+    }
+}

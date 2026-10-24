@@ -1,0 +1,605 @@
+openapi: '3.1.0'
+info:
+  title: Bloomberg
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-01T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.bloomberg.com
+    x-openweb:
+      transport: page
+      page_plan:
+        warm: true
+        nav_timeout_ms: 60000
+        wait_until: domcontentloaded
+        settle_ms: 4000
+paths:
+  /:
+    get:
+      operationId: getTickerBar
+      summary: Get market ticker bar — id, shortName, price, percentChange1Day, lastYield
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0001
+          signature_id: bb0001s
+          tool_version: 1
+          signals:
+            - adapter-verified
+        adapter:
+          name: bloomberg
+          operation: getTickerBar
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, shortName]
+                  properties:
+                    id:
+                      type: string
+                      description: Bloomberg ticker ID (e.g. "SPX:IND", "CCMP:IND", "CL1:COM").
+                    shortName:
+                      type: string
+                      description: Abbreviated security name (display label).
+                    price:
+                      type: [number, 'null']
+                    percentChange1Day:
+                      type: [number, 'null']
+                      description: Daily percent change.
+                    lastYield:
+                      type: [number, 'null']
+                      description: Yield for bonds, null for equities/commodities.
+  /news-headlines:
+    get:
+      operationId: getNewsHeadlines
+      summary: Get top financial news headlines from Bloomberg homepage — headline, abstract, author, topics
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0002
+          signature_id: bb0002s
+          tool_version: 1
+          signals:
+            - adapter-verified
+        adapter:
+          name: bloomberg
+          operation: getNewsHeadlines
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of headlines returned (max 25).
+                  items:
+                    type: array
+                    description: Array of headline objects.
+                    items:
+                      type: object
+                      required: [id, headline]
+                      properties:
+                        id:
+                          type: string
+                          description: Story identifier.
+                        headline:
+                          type: string
+                          description: Story headline text.
+                        url:
+                          type: [string, 'null']
+                          description: Relative URL to full story.
+                        publishedAt:
+                          type: [string, 'null']
+                          description: ISO 8601 publication timestamp.
+                        byline:
+                          type: [string, 'null']
+                          description: Author byline.
+                        brand:
+                          type: [string, 'null']
+                          description: Bloomberg brand or section label.
+  /latest-news:
+    get:
+      operationId: getLatestNews
+      summary: Get latest breaking news from Bloomberg — headline, abstract, author, published time
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0009
+          signature_id: bb0009s
+          tool_version: 1
+          signals:
+            - adapter-verified
+        adapter:
+          name: bloomberg
+          operation: getLatestNews
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of stories returned.
+                  items:
+                    type: array
+                    description: Array of breaking news stories.
+                    items:
+                      type: object
+                      required: [id, headline]
+                      properties:
+                        id:
+                          type: string
+                          description: Story identifier.
+                        headline:
+                          type: string
+                          description: Story headline text.
+                        abstract:
+                          type: [string, 'null']
+                          description: Story summary.
+                        url:
+                          type: [string, 'null']
+                          description: Relative URL to full story.
+                        publishedAt:
+                          type: [string, 'null']
+                          description: ISO 8601 publication timestamp.
+                        byline:
+                          type: [string, 'null']
+                          description: Author byline.
+                        brand:
+                          type: [string, 'null']
+                          description: Bloomberg brand or section label.
+  /search:
+    get:
+      operationId: searchBloomberg
+      summary: Search Bloomberg for news, quotes, and people — headline, abstract, url, publishedAt, type
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0010
+          signature_id: bb0010s
+          tool_version: 1
+          signals:
+            - next_data
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const el = document.getElementById('__NEXT_DATA__');
+              if (!el) return { items: [] };
+              const data = JSON.parse(el.textContent);
+              const pp = data.props?.pageProps || {};
+              const results = pp.results || pp.searchResults || pp.initialState?.searchResults || pp.initialState?.results;
+              if (results) return results;
+              const state = pp.initialState || {};
+              const modules = state.modulesById || {};
+              const items = [];
+              for (const mod of Object.values(modules)) {
+                const stories = mod?.stories || mod?.items;
+                if (!Array.isArray(stories)) continue;
+                for (const s of stories) {
+                  if (!s.headline) continue;
+                  items.push({
+                    id: s.id,
+                    headline: s.headline,
+                    abstract: s.abstract || null,
+                    url: s.url || null,
+                    publishedAt: s.publishedAt || null,
+                    type: s.type || null,
+                  });
+                }
+              }
+              return { count: items.length, items: items.slice(0, 30) };
+            })()
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (ticker, company name, topic).
+          example: artificial intelligence
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of search results.
+                  items:
+                    type: array
+                    description: Array of search result objects.
+                    items:
+                      type: object
+                      required: [id, headline]
+                      properties:
+                        id:
+                          type: string
+                          description: Result identifier.
+                        headline:
+                          type: string
+                          description: Result headline text.
+                        abstract:
+                          type: [string, 'null']
+                          description: Result summary.
+                        url:
+                          type: [string, 'null']
+                          description: Relative URL to full article.
+                        publishedAt:
+                          type: [string, 'null']
+                          description: ISO 8601 publication timestamp.
+                        type:
+                          type: [string, 'null']
+                          description: Result type (e.g. "article", "quote", "person").
+  /profile/company/{ticker}:
+    get:
+      operationId: getCompanyProfile
+      summary: Get company profile — name, description, sector, market cap, employees, headquarters
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0011
+          signature_id: bb0011s
+          tool_version: 1
+          signals:
+            - next_data
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const el = document.getElementById('__NEXT_DATA__');
+              if (!el) return null;
+              try {
+                const data = JSON.parse(el.textContent);
+                const pp = data.props?.pageProps || {};
+                const state = pp.initialState || pp;
+                const co = state.company || state.companyProfile || pp.company || pp.profile || {};
+                return {
+                  name: co.name || co.companyName || co.longName || null,
+                  ticker: co.ticker || co.id || co.tickerSymbol || null,
+                  description: co.description || co.longDescription || co.businessDescription || null,
+                  sector: co.sector || co.industrySector || null,
+                  industry: co.industry || co.industryGroup || co.subIndustry || null,
+                  marketCap: co.marketCap || co.marketCapitalization || null,
+                  employees: co.employees || co.numOfEmployees || co.numberOfEmployees || null,
+                  headquarters: co.headquarters || co.address?.city || null,
+                  country: co.country || co.address?.country || null,
+                  website: co.website || co.url || co.webSite || null,
+                  phone: co.phone || co.phoneNumber || null,
+                  founded: co.founded || co.yearFounded || null,
+                };
+              } catch { return null; }
+            })()
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Bloomberg ticker with exchange suffix (e.g. "AAPL:US", "MSFT:US").
+          example: AAPL:US
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, ticker]
+                properties:
+                  name:
+                    type: [string, 'null']
+                    description: Company name.
+                  ticker:
+                    type: [string, 'null']
+                    description: Bloomberg ticker symbol.
+                  description:
+                    type: [string, 'null']
+                    description: Business description.
+                  sector:
+                    type: [string, 'null']
+                    description: Industry sector (e.g. "Technology").
+                  industry:
+                    type: [string, 'null']
+                    description: Industry group (e.g. "Software").
+                  marketCap:
+                    type: [number, 'null']
+                    description: Market capitalization.
+                  employees:
+                    type: [integer, 'null']
+                    description: Number of employees.
+                  headquarters:
+                    type: [string, 'null']
+                    description: Headquarters city.
+                  country:
+                    type: [string, 'null']
+                    description: Country of incorporation.
+                  website:
+                    type: [string, 'null']
+                    description: Company website URL.
+                  phone:
+                    type: [string, 'null']
+                    description: Phone number.
+                  founded:
+                    type: [string, 'null']
+                    description: Year founded.
+  /quote/{ticker}:
+    get:
+      operationId: getStockChart
+      summary: Get stock quote and price chart — price, change, open/high/low, 1Y and 5Y price history
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0012
+          signature_id: bb0012s
+          tool_version: 1
+          signals:
+            - adapter-verified
+        adapter:
+          name: bloomberg
+          operation: getStockChart
+        page_plan:
+          entry_url: https://www.bloomberg.com/quote/{ticker}
+          wait_until: domcontentloaded
+          settle_ms: 4000
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Bloomberg ticker with exchange suffix (e.g. "AAPL:US", "SPX:IND").
+          example: AAPL:US
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticker]
+                properties:
+                  ticker:
+                    type: [string, 'null']
+                    description: Bloomberg ticker symbol.
+                  name:
+                    type: [string, 'null']
+                    description: Security name.
+                  price:
+                    type: [number, 'null']
+                    description: Last price.
+                  currency:
+                    type: [string, 'null']
+                    description: Price currency (e.g. "USD").
+                  priceChange:
+                    type: [number, 'null']
+                    description: Absolute price change (1-day).
+                  percentChange:
+                    type: [number, 'null']
+                    description: Percent price change (1-day).
+                  open:
+                    type: [number, 'null']
+                    description: Opening price.
+                  dayHigh:
+                    type: [number, 'null']
+                    description: Day high.
+                  dayLow:
+                    type: [number, 'null']
+                    description: Day low.
+                  previousClose:
+                    type: [number, 'null']
+                    description: Previous closing price.
+                  volume:
+                    type: [number, 'null']
+                    description: Trading volume.
+                  marketCap:
+                    type: [string, 'null']
+                    description: Market capitalization (formatted, e.g. "3.964T").
+                  priceHistory1Y:
+                    type: array
+                    description: 1-year price history (daily points).
+                    items:
+                      type: object
+                      properties:
+                        dateTime:
+                          type: [string, 'null']
+                          description: ISO date-time.
+                        value:
+                          type: [number, 'null']
+                          description: Price at that date.
+                  priceHistory5Y:
+                    type: array
+                    description: 5-year price history (monthly points).
+                    items:
+                      type: object
+                      properties:
+                        dateTime:
+                          type: [string, 'null']
+                          description: ISO date-time.
+                        value:
+                          type: [number, 'null']
+                          description: Price at that date.
+  /markets:
+    get:
+      operationId: getMarketOverview
+      summary: Get market overview — indices, bonds, commodities, currencies with prices and changes
+      x-openweb:
+        permission: read
+        verify_status: requires_interactive_solve
+        build:
+          verified: true
+          stable_id: bb0013
+          signature_id: bb0013s
+          tool_version: 1
+          signals:
+            - next_data
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const el = document.getElementById('__NEXT_DATA__');
+              if (!el) return null;
+              try {
+                const data = JSON.parse(el.textContent);
+                const pp = data.props?.pageProps || {};
+                const state = pp.initialState || pp;
+                const fmt = (items) => {
+                  if (!Array.isArray(items)) return [];
+                  return items.map(s => ({
+                    id: s.id || null,
+                    name: s.name || s.shortName || null,
+                    price: s.price || s.lastPrice || null,
+                    priceChange: s.priceChange1Day || s.netChange || null,
+                    percentChange: s.percentChange1Day || null,
+                    currency: s.currency || null,
+                  }));
+                };
+                const mods = state.markets || state.modulesById || state;
+                return {
+                  indices: fmt(mods.indices || mods.stockIndices || state.indices || []),
+                  bonds: fmt(mods.bonds || mods.fixedIncome || state.bonds || []),
+                  commodities: fmt(mods.commodities || state.commodities || []),
+                  currencies: fmt(mods.currencies || mods.forex || state.currencies || []),
+                };
+              } catch { return null; }
+            })()
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [indices, bonds, commodities, currencies]
+                properties:
+                  indices:
+                    type: array
+                    description: Stock market indices.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: [string, 'null']
+                          description: Bloomberg ticker ID (e.g. "SPX:IND").
+                        name:
+                          type: [string, 'null']
+                          description: Index name.
+                        price:
+                          type: [number, 'null']
+                          description: Last price.
+                        priceChange:
+                          type: [number, 'null']
+                          description: Absolute price change (1-day).
+                        percentChange:
+                          type: [number, 'null']
+                          description: Percent price change (1-day).
+                        currency:
+                          type: [string, 'null']
+                          description: Price currency.
+                  bonds:
+                    type: array
+                    description: Bond/fixed-income securities.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: [string, 'null']
+                          description: Bloomberg ticker ID.
+                        name:
+                          type: [string, 'null']
+                          description: Bond name.
+                        price:
+                          type: [number, 'null']
+                          description: Last price or yield.
+                        priceChange:
+                          type: [number, 'null']
+                          description: Absolute price change (1-day).
+                        percentChange:
+                          type: [number, 'null']
+                          description: Percent price change (1-day).
+                        currency:
+                          type: [string, 'null']
+                          description: Price currency.
+                  commodities:
+                    type: array
+                    description: Commodity prices.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: [string, 'null']
+                          description: Bloomberg ticker ID (e.g. "CL1:COM").
+                        name:
+                          type: [string, 'null']
+                          description: Commodity name.
+                        price:
+                          type: [number, 'null']
+                          description: Last price.
+                        priceChange:
+                          type: [number, 'null']
+                          description: Absolute price change (1-day).
+                        percentChange:
+                          type: [number, 'null']
+                          description: Percent price change (1-day).
+                        currency:
+                          type: [string, 'null']
+                          description: Price currency.
+                  currencies:
+                    type: array
+                    description: Currency pairs.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: [string, 'null']
+                          description: Bloomberg ticker ID.
+                        name:
+                          type: [string, 'null']
+                          description: Currency pair name.
+                        price:
+                          type: [number, 'null']
+                          description: Exchange rate.
+                        priceChange:
+                          type: [number, 'null']
+                          description: Absolute rate change (1-day).
+                        percentChange:
+                          type: [number, 'null']
+                          description: Percent rate change (1-day).
+                        currency:
+                          type: [string, 'null']
+                          description: Quote currency.

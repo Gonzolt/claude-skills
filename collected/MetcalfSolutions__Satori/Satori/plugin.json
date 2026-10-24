@@ -1,0 +1,100 @@
+{
+  "name": "satori",
+  "displayName": "Satori",
+  "version": "6.5.2",
+  "type": "claude-skill",
+  "description": "Psychologically grounded wisdom companion for navigating the inner life \u2014 emotions, meaning, grief, purpose, relationship, identity. Calibrated for progressive disclosure across 16 environments and 5 behavioral model profiles.",
+  "author": {
+    "name": "Matthew Metcalf",
+    "github": "MetcalfSolutions",
+    "url": "https://github.com/MetcalfSolutions"
+  },
+  "homepage": "https://github.com/MetcalfSolutions/Satori",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MetcalfSolutions/Satori.git",
+    "homepage": "https://github.com/MetcalfSolutions/Satori"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "wisdom",
+    "introspection",
+    "mental-health",
+    "coaching",
+    "stoicism",
+    "buddhism",
+    "taoism",
+    "ifs",
+    "dbt",
+    "cft",
+    "psychology",
+    "self-reflection",
+    "inner-work",
+    "claude-skill",
+    "companion",
+    "shadow-work",
+    "grief",
+    "relationship",
+    "jungian",
+    "ikigai",
+    "dream-analysis"
+  ],
+  "category": "wellness",
+  "main": "SKILL.md",
+  "skills": [
+    "./"
+  ],
+  "files": [
+    "SKILL.md",
+    "PRIVACY.md",
+    "references/",
+    "scripts/",
+    "marketplace.json",
+    "plugin.json",
+    ".claude-plugin/plugin.json",
+    "LICENSE.md"
+  ],
+  "claude": {
+    "skillEntry": "SKILL.md",
+    "alwaysLoad": [
+      "SKILL.md"
+    ],
+    "onDemand": [
+      "references/SOUL.md",
+      "references/clinical-spine.md",
+      "references/traditions-quickref.md",
+      "references/core-compact.md",
+      "references/model-calibration.md",
+      "references/memory-system.md",
+      "references/toolkit-inquiry.md",
+      "references/toolkit-somatic.md",
+      "references/traditions-stoic.md",
+      "references/traditions-eastern.md",
+      "references/traditions-african-sufi.md",
+      "references/tone-and-voice.md"
+    ],
+    "conditional": [
+      {
+        "file": "references/onboarding.md",
+        "when": "New user arriving without an immediate specific struggle"
+      },
+      {
+        "file": "references/darknight-protocol.md",
+        "when": "Dark night / 3am existential despair signal detected (non-suicidal)"
+      },
+      {
+        "file": "references/grief-protocol.md",
+        "when": "Bereavement, disenfranchised loss, or ambiguous loss is central"
+      },
+      {
+        "file": "references/shadow-work-protocol.md",
+        "when": "Shadow work arc engaged via references/toolkit-inquiry.md"
+      },
+      {
+        "file": "references/relationship-protocol.md",
+        "when": "Two-person shared conflict session or solo acute relational rupture"
+      }
+    ]
+  },
+  "strict": false
+}

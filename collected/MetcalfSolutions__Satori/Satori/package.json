@@ -1,0 +1,88 @@
+{
+  "name": "@metcalfsolutions/satori",
+  "version": "6.5.2",
+  "description": "A Claude skill blending psychology, philosophy, and wisdom traditions into a conversation partner with actual depth. Free, open-source, not a therapist.",
+  "bin": {
+    "satori": "./scripts/cli.js"
+  },
+  "keywords": [
+    "wisdom",
+    "introspection",
+    "mental-health",
+    "coaching",
+    "stoicism",
+    "buddhism",
+    "taoism",
+    "ifs",
+    "dbt",
+    "cft",
+    "psychology",
+    "self-reflection",
+    "inner-work",
+    "claude-skill",
+    "claude-code",
+    "antigravity",
+    "codex",
+    "cursor",
+    "windsurf",
+    "opencode",
+    "hermes-agent",
+    "openclaw",
+    "companion",
+    "skillmd",
+    "shadow-work",
+    "grief",
+    "relationship",
+    "jungian",
+    "ikigai",
+    "dream-analysis",
+    "onboarding",
+    "dark-night",
+    "narrative-identity",
+    "motivational-interviewing"
+  ],
+  "homepage": "https://github.com/MetcalfSolutions/Satori",
+  "bugs": {
+    "url": "https://github.com/MetcalfSolutions/Satori/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MetcalfSolutions/Satori.git"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Matthew Metcalf",
+    "url": "https://github.com/MetcalfSolutions"
+  },
+  "files": [
+    "SKILL.md",
+    "AGENTS.md",
+    "GEMINI.md",
+    "CLAUDE.md",
+    "PRIVACY.md",
+    "references/",
+    "scripts/",
+    "plugin.json",
+    "marketplace.json",
+    "gemini-extension.json",
+    "openclaw.plugin.json",
+    ".claude-plugin/",
+    ".codex-plugin/",
+    ".agents/",
+    ".cursor/",
+    ".windsurf/",
+    ".opencode/",
+    ".hermes/",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "python scripts/build_release.py --sync",
+    "validate": "python scripts/validate_skill.py",
+    "test:memory": "python scripts/satori_memory.py self-test",
+    "test:evals": "python scripts/test_judge_calibration.py && python scripts/run_evals.py --suite trigger --mode lint",
+    "test": "npm run validate && npm run test:memory && npm run test:evals"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "operation_id": "nearbySearch",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "category": "restaurants",
+        "location": "Times Square"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

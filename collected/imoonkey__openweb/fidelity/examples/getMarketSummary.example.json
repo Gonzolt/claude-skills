@@ -1,0 +1,11 @@
+{
+  "operation_id": "getMarketSummary",
+  "method": "post",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": { "supportCrypto": "N" },
+      "assertions": { "status": 200, "response_schema_valid": true }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "operation_id": "hideReply",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "order": 18,
+  "cases": [
+    {
+      "input": {
+        "tweet_id": "2046061970021847164"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ],
+  "operationId": "hideReply"
+}

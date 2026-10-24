@@ -1,0 +1,14 @@
+{
+  "operation_id": "forwardMessages",
+  "replay_safety": "unsafe_mutation",
+  "order": 3,
+  "cases": [
+    {
+      "input": { "fromChatId": "me", "toChatId": "me", "messageIds": ["latest"] },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

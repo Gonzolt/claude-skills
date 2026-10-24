@@ -1,0 +1,13 @@
+{
+  "operation_id": "removeFromCart",
+  "replay_safety": "unsafe_mutation",
+  "order": 3,
+  "cases": [
+    {
+      "input": { "orderItemId": "${prev.addToCart.orderItemId}" },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

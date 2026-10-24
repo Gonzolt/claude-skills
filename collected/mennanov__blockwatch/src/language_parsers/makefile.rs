@@ -1,0 +1,61 @@
+use crate::language_parsers::{
+    CommentsParser, LanguageParser, LanguageParserImpl, python_style_comments_parser,
+};
+
+/// Returns a [`LanguageParser`] for Makefile.
+pub(super) fn parser() -> anyhow::Result<impl LanguageParser> {
+    Ok(LanguageParserImpl::new(comments_parser()?))
+}
+
+fn comments_parser() -> anyhow::Result<impl CommentsParser> {
+    let language = tree_sitter_make::LANGUAGE.into();
+    let parser = python_style_comments_parser(&language, "comment")?;
+    Ok(parser)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Position, language_parsers::Comment};
+
+    #[test]
+    fn parses_comments_correctly() -> anyhow::Result<()> {
+        let mut comments_parser = comments_parser()?;
+
+        let blocks: Vec<Comment> = comments_parser
+            .parse(
+                r#"
+# This is a comment
+all:
+	@echo "Hello" # Inline comment
+
+# Another comment
+# spanning multiple lines
+"#,
+            )
+            .collect();
+
+        assert_eq!(
+            blocks,
+            vec![
+                Comment {
+                    position_range: Position::new(2, 1)..Position::new(2, 20),
+                    source_range: 1..20,
+                    comment_text: "  This is a comment".to_string()
+                },
+                Comment {
+                    position_range: Position::new(6, 1)..Position::new(6, 18),
+                    source_range: 59..76,
+                    comment_text: "  Another comment".to_string()
+                },
+                Comment {
+                    position_range: Position::new(7, 1)..Position::new(7, 26),
+                    source_range: 77..102,
+                    comment_text: "  spanning multiple lines".to_string()
+                },
+            ]
+        );
+
+        Ok(())
+    }
+}

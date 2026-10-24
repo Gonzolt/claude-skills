@@ -1,0 +1,15 @@
+{
+  "operation_id": "getTransitDirections",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "origin": "Union Square, San Francisco",
+        "destination": "Golden Gate Park, San Francisco"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

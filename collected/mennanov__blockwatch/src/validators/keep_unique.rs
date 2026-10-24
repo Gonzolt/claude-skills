@@ -1,0 +1,640 @@
+use crate::blocks::{Block, BlockWithContext};
+use crate::repo_path::RepoPath;
+use crate::validators::{
+    SyncValidator, ValidationReport, Validator, ValidatorTrace, ValidatorType, Violation,
+    ViolationRange, compile_pattern, regex_value, trimmed_line_value,
+};
+use crate::{Position, validators};
+use serde::Serialize;
+use std::collections::HashSet;
+use std::sync::Arc;
+
+/// Enforces `keep-unique`: no two non-empty lines inside the block may be equal.
+///
+/// The attribute's value optionally supplies a regex selecting the part of each line that must be
+/// unique, which is how lists of ids or keys are checked without regard to the rest of the line.
+struct KeepUniqueValidator;
+
+impl SyncValidator for KeepUniqueValidator {
+    fn validate(
+        &self,
+        context: Arc<validators::ValidationContext>,
+    ) -> anyhow::Result<ValidationReport> {
+        let mut report = ValidationReport::default();
+        for (file_path, file_blocks) in &context.blocks {
+            for block_with_context in &file_blocks.blocks_with_context {
+                if !block_with_context
+                    .block
+                    .attributes
+                    .contains_key("keep-unique")
+                {
+                    continue;
+                }
+                let pattern = block_with_context
+                    .block
+                    .attributes
+                    .get("keep-unique")
+                    .cloned()
+                    .unwrap_or_default();
+                let re = if pattern.is_empty() {
+                    None
+                } else {
+                    Some(compile_pattern(&pattern))
+                };
+                let mut trace = context
+                    .traces_requested
+                    .then(|| KeepUniqueTrace { lines: Vec::new() });
+                let mut block_violations = Vec::new();
+                let mut seen: HashSet<&str> = HashSet::new();
+                for (line_number, line) in block_with_context
+                    .block
+                    .content
+                    .text(&file_blocks.file_content)
+                    .lines()
+                    .enumerate()
+                {
+                    let line_match = match &re {
+                        None => trimmed_line_value(line),
+                        Some(Ok(re)) => regex_value(line, re),
+                        Some(Err(e)) => {
+                            // Invalid regex: return an error for the validator
+                            return Err(anyhow::anyhow!(
+                                "invalid keep-unique regex pattern for block {}: {}",
+                                block_with_context.block.label(file_path),
+                                e
+                            ));
+                        }
+                    };
+                    if let Some(trace) = &mut trace
+                        && !line.trim().is_empty()
+                    {
+                        trace.push(
+                            block_with_context
+                                .block
+                                .content
+                                .position(line_number, 0)
+                                .line,
+                            line.trim(),
+                            line_match.as_ref().map(|(value, _)| *value),
+                        );
+                    }
+                    if let Some((matched_line, line_range)) = line_match
+                        && !seen.insert(matched_line)
+                    {
+                        // `line_range` is a 0-based column range within the content line, which is
+                        // not where that line starts in the source: content begins where the start
+                        // tag's comment ends.
+                        let violation_start = block_with_context
+                            .block
+                            .content
+                            .position(line_number, line_range.start);
+                        let line_character_end = violation_start.character + line_range.len();
+                        block_violations.push(create_violation(
+                            file_path,
+                            &block_with_context.block,
+                            line.trim(),
+                            violation_start.line,
+                            violation_start.character,
+                            line_character_end,
+                        ));
+                        break;
+                    }
+                }
+                report.add_all(file_path, &block_with_context.block, block_violations);
+                if let Some(trace) = trace {
+                    report.add_trace(
+                        file_path,
+                        &block_with_context.block,
+                        ValidatorTrace::KeepUnique(trace),
+                    );
+                }
+            }
+        }
+        Ok(report)
+    }
+}
+
+/// What `keep-unique` saw in one block.
+#[derive(Serialize, Debug)]
+pub(crate) struct KeepUniqueTrace {
+    /// The lines that aren't blank, up to the first repeat, where the validator stops.
+    lines: Vec<KeepUniqueLine>,
+}
+
+impl KeepUniqueTrace {
+    /// Adds the trimmed `text` of `line`, whose compared value is `value`, or `None` when the
+    /// pattern skips the line.
+    fn push(&mut self, line: usize, text: &str, value: Option<&str>) {
+        // The validator stops at the first repeat, so an earlier line with the same value is the
+        // one the repeat is a duplicate of.
+        let duplicate_of = value.and_then(|value| {
+            self.lines
+                .iter()
+                .find(|earlier| earlier.value.as_deref() == Some(value))
+                .map(|earlier| earlier.line)
+        });
+        self.lines.push(KeepUniqueLine {
+            duplicate_of,
+            line,
+            text: text.to_string(),
+            value: value.map(str::to_string),
+        });
+    }
+}
+
+/// One line that `keep-unique` read.
+///
+/// serde writes the keys in the order the fields are declared, and the output keeps its keys
+/// sorted. So declare the fields in alphabetical order.
+#[derive(Serialize, Debug)]
+struct KeepUniqueLine {
+    /// The line where the value first appeared. `None` for a value seen for the first time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duplicate_of: Option<usize>,
+    /// The line in the block's file.
+    line: usize,
+    /// The line, trimmed.
+    text: String,
+    /// What is compared: the `value` group of the pattern, the whole match, or the trimmed line.
+    /// `None` when the pattern skips the line.
+    value: Option<String>,
+}
+
+/// Selects [`KeepUniqueValidator`] for blocks carrying a `keep-unique` attribute.
+pub(super) fn detect(block_with_context: &BlockWithContext) -> Option<ValidatorType> {
+    block_with_context
+        .block
+        .attributes
+        .contains_key("keep-unique")
+        .then(|| ValidatorType::Sync(Box::new(KeepUniqueValidator)))
+}
+
+fn create_violation(
+    block_file_path: &RepoPath,
+    block: &Block,
+    violation_line: &str,
+    violation_line_number: usize,
+    violation_character_start: usize,
+    violation_character_end: usize,
+) -> Violation {
+    let message = format!(
+        "Block {} has a duplicated line {}",
+        block.label(block_file_path),
+        violation_line_number,
+    );
+    Violation::new(
+        ViolationRange::new(
+            Position::new(violation_line_number, violation_character_start),
+            Position::new(violation_line_number, violation_character_end),
+        ),
+        block_file_path,
+        block,
+        Validator::KeepUnique,
+        message,
+        // Identify the violation by the offending line rather than its number, which shifts
+        // whenever anything above it is added or removed.
+        Some(violation_line),
+        None,
+    )
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+    use crate::diff_parser::DiffChanges;
+    use crate::language_parsers::LanguageParsers;
+    use crate::repo_path::RepoPath;
+    use crate::test_utils::validation_context;
+    use crate::validators::test_utils::{checked_lines, violation_count};
+    use std::collections::HashMap;
+
+    #[test]
+    fn block_with_a_duplicate_line_returns_a_violation_on_the_repeat() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique>
+A
+BB
+C
+BB
+C
+BB
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert_eq!(violations.len(), 1);
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        assert_eq!(file_violations.len(), 1);
+        assert_eq!(
+            file_violations[0].message,
+            "Block example.py:(unnamed) at line 1 has a duplicated line 5"
+        );
+        assert_eq!(file_violations[0].code, Validator::KeepUnique);
+        // Entire line is in the range.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(5, 1), Position::new(5, 3))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn duplicated_line_holding_non_ascii_returns_a_range_measured_in_characters()
+    -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique>\ncafé\ncafé\n# </block>",
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        // `café` is four characters long even though it takes five bytes.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(3, 1), Position::new(3, 5))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn block_with_all_unique_lines_returns_no_violations() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique>
+A
+B
+C
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn block_with_a_multiline_start_tag_returns_a_violation_on_the_duplicate_line()
+    -> anyhow::Result<()> {
+        let context = validation_context(
+            "example.rs",
+            "/* <block\nkeep-unique> */\nA\nA\n/* </block> */",
+        );
+
+        let violations = KeepUniqueValidator.validate(context)?.violations;
+
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.rs")?)
+            .unwrap();
+        // The start tag spans lines 1-2, so the content starts on line 2 and the repeat sits on
+        // line 4. Anchoring to the start tag instead would name line 3, the first occurrence.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(4, 1), Position::new(4, 2))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_with_a_named_group_returns_a_violation_for_a_duplicate_group_value()
+    -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique="^ID:(?P<value>\d+)">
+ID:1 A
+ID:2 B
+ID:1 C
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+        assert_eq!(violations.len(), 1);
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        assert_eq!(file_violations.len(), 1);
+        // Only the matched value group is in the range.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(4, 4), Position::new(4, 5))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_matches_within_the_trimmed_line() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        // `^` and `$` anchor to the trimmed line, so entries keep matching once they are nested
+        // inside a list or a block of code.
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique=\"^ID:(?P<value>\\d+)$\">\n  ID:1\n  ID:1\n# </block>",
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        // The range still points into the original line, indentation included.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(3, 6), Position::new(3, 7))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_matching_empty_text_skips_blank_lines() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique=\"(?P<value>.*)\">\nA\n\nB\n\n# </block>",
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_matching_empty_text_skips_the_line() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        // An empty match carries no value to compare, so the line counts as unmatched rather than
+        // as an entry that is equal to every other empty match.
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique=\"(?P<value>\\d*)\">\nabc\ndef\n# </block>",
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_with_a_value_group_not_in_the_match_skips_the_line() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        // The `none` lines match the branch without the `value` group.
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique="^(?:none|(?P<value>\w+))$">
+none
+none
+red
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_without_a_named_group_returns_a_violation_for_a_duplicate_whole_match()
+    -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique="^ID:\d+">
+ID:1 A
+ID:2 B
+ID:1 C
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+        assert_eq!(violations.len(), 1);
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        assert_eq!(file_violations.len(), 1);
+        // Full regex match is in the range.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(4, 1), Position::new(4, 5))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_with_a_line_break_returns_an_error() {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique=\"id = (?P<value>\\w+)\n# ok\">\nid = a ok\nid = a ok\n# </block>",
+        );
+
+        let err = validator.validate(context).unwrap_err();
+        assert!(
+            err.to_string().contains("line break"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn block_with_lines_not_matching_the_pattern_returns_no_violations() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique="^ID:(?P<value>\d+)">
+ID:1
+X:2
+ID:2
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_spaces_match_within_the_trimmed_line() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        // Spaces the pattern asks for still have to be there inside the entry; the padding around
+        // the entry is not part of what the pattern sees, so the same value written with and
+        // without padding is one value.
+        let context = validation_context(
+            "example.py",
+            "# <block keep-unique=\"^ID: (?P<value>\\d+)$\">\n  ID: 1  \nID:2\nID: 1\n# </block>",
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert_eq!(violations.len(), 1);
+        let file_violations = violations
+            .get(&RepoPath::from_reference("example.py")?)
+            .unwrap();
+        assert_eq!(file_violations.len(), 1);
+        // `ID:2` lacks the space the pattern requires, so line 4 is the first repeat of `1`.
+        assert_eq!(
+            file_violations[0].range,
+            ViolationRange::new(Position::new(4, 5), Position::new(4, 6))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn block_with_blank_and_whitespace_only_lines_returns_no_violations() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique>
+A
+B
+ 
+ 
+  
+  
+C
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn block_with_empty_content_returns_no_violations() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = validation_context(
+            "example.py",
+            r#"# <block keep-unique>
+# </block>"#,
+        );
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn context_without_any_blocks_returns_no_violations() -> anyhow::Result<()> {
+        let validator = KeepUniqueValidator;
+        let context = Arc::new(validators::ValidationContext::new(
+            HashMap::new(),
+            LanguageParsers::default(),
+            DiffChanges::default(),
+            Vec::new(),
+        ));
+
+        let violations = validator.validate(context)?.violations;
+
+        assert!(violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn blocks_with_and_without_keep_unique_records_a_check_for_the_examined_ones_only()
+    -> anyhow::Result<()> {
+        let context = validation_context(
+            "example.py",
+            r#"# <block name="unique" keep-unique>
+'apple',
+'banana',
+# </block>
+# <block name="duplicated" keep-unique>
+'apple',
+'apple',
+# </block>
+# <block name="unrelated">
+'apple',
+'apple',
+# </block>"#,
+        );
+
+        let report = KeepUniqueValidator.validate(context)?;
+
+        // The block without a keep-unique attribute is not checked, so it records nothing.
+        assert_eq!(checked_lines(&report), vec![1, 5]);
+        assert_eq!(violation_count(&report), 1);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod trace_tests {
+    use super::*;
+    use crate::test_utils::validation_context;
+    use crate::validators::test_utils::{trace_json, with_traces};
+    use serde_json::json;
+
+    #[test]
+    fn block_with_a_repeat_records_the_lines_up_to_it_and_where_its_value_first_appeared()
+    -> anyhow::Result<()> {
+        // The validator stops at the first repeat, so it never reads the last line.
+        let context = with_traces(validation_context(
+            "a.py",
+            "# <block keep-unique>\nred\nblue\n\nred\n red\n# </block>\n",
+        ));
+
+        let report = KeepUniqueValidator.validate(context)?;
+
+        assert_eq!(
+            trace_json(&report),
+            json!({
+                "lines": [
+                    { "line": 2, "text": "red", "value": "red" },
+                    { "line": 3, "text": "blue", "value": "blue" },
+                    { "duplicate_of": 2, "line": 5, "text": "red", "value": "red" }
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_records_no_value_for_a_line_it_skips() -> anyhow::Result<()> {
+        let context = with_traces(validation_context(
+            "a.py",
+            r#"# <block keep-unique="ID:(?P<value>\d+)">
+ID:7 red
+none
+ID:7 blue
+# </block>
+"#,
+        ));
+
+        let report = KeepUniqueValidator.validate(context)?;
+
+        assert_eq!(
+            trace_json(&report),
+            json!({
+                "lines": [
+                    { "line": 2, "text": "ID:7 red", "value": "7" },
+                    { "line": 3, "text": "none", "value": null },
+                    { "duplicate_of": 2, "line": 4, "text": "ID:7 blue", "value": "7" }
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn context_without_traces_requested_records_no_trace() -> anyhow::Result<()> {
+        let context = validation_context("a.py", "# <block keep-unique>\na\na\n# </block>\n");
+
+        let report = KeepUniqueValidator.validate(context)?;
+
+        assert!(report.traces.is_empty());
+        Ok(())
+    }
+}

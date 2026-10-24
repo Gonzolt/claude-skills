@@ -1,0 +1,10 @@
+{
+  "operation_id": "getJobDetail",
+  "method": "get",
+  "cases": [
+    {
+      "input": { "jobId": "c87fbe4ceb69849d0nZz29W1EFRR.html" },
+      "assertions": { "status": 200, "response_schema_valid": true }
+    }
+  ]
+}

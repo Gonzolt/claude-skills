@@ -1,0 +1,1595 @@
+//! Reads a unified diff into the per-file line changes that decide which blocks are checked.
+
+use crate::Position;
+use crate::fs::FileSystem;
+use crate::repo_path::RepoPath;
+use anyhow::Context;
+use similar::DiffOp;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::Range;
+use std::str::FromStr;
+use unidiff::{Line, PatchSet, PatchedFile};
+
+/// Represents a line change from a diff.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(crate) struct LineChange {
+    /// 1-based line number with a change, in the diff's target file.
+    pub(crate) line: usize,
+    /// What the diff did to that line.
+    pub(crate) kind: LineChangeKind,
+}
+
+/// The changes a diff makes to one file, in ascending order of line.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct LineChanges(Vec<LineChange>);
+
+impl FromIterator<LineChange> for LineChanges {
+    /// Sorts the changes by line. Changes on the same line keep their order.
+    fn from_iter<I: IntoIterator<Item = LineChange>>(changes: I) -> Self {
+        let mut changes: Vec<LineChange> = changes.into_iter().collect();
+        changes.sort_by_key(|line_change| line_change.line);
+        Self(changes)
+    }
+}
+
+impl LineChanges {
+    /// Whether there are no changes.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether any change touches a character in `range`.
+    ///
+    /// Text deleted right before `range.start` does not count, since it was never part of the range.
+    pub(crate) fn touches(&self, range: &Range<Position>) -> bool {
+        self.on_lines(range.start.line, range.end.line)
+            .any(|line_change| range_intersects(range, line_change))
+    }
+
+    /// The changes that fall on lines `first_line..=last_line`, in order.
+    pub(crate) fn on_lines(
+        &self,
+        first_line: usize,
+        last_line: usize,
+    ) -> impl Iterator<Item = &LineChange> {
+        let first = self
+            .0
+            .partition_point(|line_change| line_change.line < first_line);
+        self.0[first..]
+            .iter()
+            .take_while(move |line_change| line_change.line <= last_line)
+    }
+}
+
+/// The changes a diff makes to the files of the repository.
+#[derive(Debug, Default)]
+pub(crate) struct DiffChanges(HashMap<RepoPath, LineChanges>);
+
+impl FromIterator<(RepoPath, LineChanges)> for DiffChanges {
+    fn from_iter<I: IntoIterator<Item = (RepoPath, LineChanges)>>(files: I) -> Self {
+        Self(files.into_iter().collect())
+    }
+}
+
+impl DiffChanges {
+    /// The changes to `file`. A file the diff does not list has none.
+    pub(crate) fn for_file(&self, file: &RepoPath) -> &LineChanges {
+        static NO_CHANGES: LineChanges = LineChanges(Vec::new());
+        self.0.get(file).unwrap_or(&NO_CHANGES)
+    }
+
+    /// Whether the diff lists `file`. A listed file can have no line changes, such as a renamed
+    /// file whose lines are the same.
+    pub(crate) fn mentions(&self, file: &RepoPath) -> bool {
+        self.0.contains_key(file)
+    }
+
+    /// The files the diff lists, in no particular order.
+    pub(crate) fn files(&self) -> impl Iterator<Item = &RepoPath> {
+        self.0.keys()
+    }
+}
+
+/// Checks whether the 0-based character ranges of a modified line intersect a 1-based half-open
+/// column span `[start_col, end_col)`.
+///
+/// Column numbers count from 1: `start_col` is 1-based inclusive, and `end_col` is 1-based
+/// exclusive. Pass `usize::MAX` for `end_col` when the span covers the rest of the line.
+///
+/// The `ranges` must be sorted in ascending order and non-overlapping, as this function
+/// binary-searches them.
+pub(crate) fn intersects_columns(
+    ranges: &[Range<usize>],
+    start_col: usize,
+    end_col: usize,
+) -> bool {
+    let start_idx = start_col.saturating_sub(1);
+    let end_idx = if end_col == usize::MAX {
+        usize::MAX
+    } else {
+        end_col.saturating_sub(1)
+    };
+    ranges
+        .binary_search_by(|range| {
+            if range.end > start_idx && range.start < end_idx {
+                Ordering::Equal
+            } else if range.end <= start_idx {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        })
+        .is_ok()
+}
+
+/// Whether `line_change`, which has to fall on one of the lines `range` spans, touches a character
+/// in `range`.
+fn range_intersects(range: &Range<Position>, line_change: &LineChange) -> bool {
+    match &line_change.kind {
+        LineChangeKind::Deleted => {
+            let point = deletion_point(line_change.line);
+            // The start is excluded even though the range includes it: text removed from just
+            // before the range's start was never part of the range, and removing it leaves the
+            // gap exactly at that start.
+            // The end is included for the mirror reason: a gap sitting exactly at the range's
+            // exclusive end is where the range's last character used to be. A whole-line
+            // deletion never lands there, since its gap is always at column 1, so this bound
+            // only bites if deletion points ever get finer-grained than a line.
+            range.start < point && point <= range.end
+        }
+        // An insertion moves the line breaks around the line, not just the characters on it,
+        // so there is nothing to compare column by column. Every position on the line counts
+        // as changed.
+        LineChangeKind::Added => true,
+        LineChangeKind::Modified(ranges) => {
+            let start_col = if line_change.line == range.start.line {
+                range.start.character
+            } else {
+                1
+            };
+            let end_col = if line_change.line < range.end.line {
+                usize::MAX
+            } else {
+                range.end.character
+            };
+
+            intersects_columns(ranges, start_col, end_col)
+        }
+    }
+}
+
+/// The place in the target file where a deletion anchored at `line` removed its text.
+///
+/// A deletion leaves no characters behind, only a gap, so it names a point rather than a line. The
+/// removed text ended with a line break, which puts the gap at the start of the line that now
+/// occupies it.
+pub(crate) fn deletion_point(line: usize) -> Position {
+    Position::new(line, 1)
+}
+
+/// What a diff did to one line of its target file.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(crate) enum LineChangeKind {
+    /// The line replaced one the diff removed. Holds the 0-based character ranges whose text
+    /// differs from the removed line; everything outside them is unchanged, the line break that
+    /// ends the line included.
+    ///
+    /// Ranges must be sorted in ascending order and non-overlapping.
+    Modified(Vec<Range<usize>>),
+    /// The newly added line (including the line break it adds).
+    Added,
+    /// The deleted line.
+    Deleted,
+}
+
+/// Rejects input that cannot be a unified diff, with a message naming the likely cause. Accepts
+/// empty or whitespace-only input as a diff with no changes.
+pub(crate) fn validate_diff_input(diff: &str) -> anyhow::Result<()> {
+    if diff.trim().is_empty() {
+        // A diff tool prints nothing when nothing changed, such as on a clean working tree.
+        return Ok(());
+    }
+    if diff.lines().any(|line| line.starts_with('\u{1b}')) {
+        anyhow::bail!("stdin carries ANSI color escapes, which cannot be parsed as a diff");
+    }
+    if !diff
+        .lines()
+        .any(|line| line.starts_with("diff --git ") || line.starts_with("--- "))
+    {
+        anyhow::bail!("stdin is not a unified diff: no line starts with `diff --git ` or `--- `");
+    }
+    Ok(())
+}
+
+/// Extracts line changes from a unified diff patch string.
+///
+/// Parses a patch/diff string and extracts all line changes grouped by file path.
+/// Deleted files are ignored and not included in the result.
+pub(crate) fn line_changes_from_diff(
+    patch_diff: &str,
+    file_system: &impl FileSystem,
+) -> anyhow::Result<DiffChanges> {
+    let mut result = HashMap::new();
+    for patched_file in PatchSet::from_str(patch_diff)? {
+        if patched_file.is_removed_file() {
+            // Deleted files are ignored.
+            continue;
+        }
+        let Some(target_path) = RepoPath::from_diff_target(
+            &patched_file.source_file,
+            &patched_file.target_file,
+            file_system,
+        )?
+        else {
+            // The header points at no file, e.g. the "/dev/null" side of a deletion.
+            continue;
+        };
+        if file_system.is_symlink(&target_path) {
+            // The walk skips a symlink, and the diff of one changes the path it points at, not
+            // the lines of that file.
+            continue;
+        }
+        let changes = line_changes(&patched_file).with_context(|| {
+            format!("failed to extract line changes from the diff for \"{target_path}\"")
+        })?;
+        result.insert(target_path, changes);
+    }
+    Ok(DiffChanges(result))
+}
+
+fn line_changes(patched_file: &PatchedFile) -> anyhow::Result<LineChanges> {
+    let mut line_changes = Vec::new();
+    let mut removed: Vec<&Line> = Vec::new();
+    let mut added: Vec<&Line> = Vec::new();
+    for hunk in patched_file.hunks() {
+        // Target-file line of the last added/context line seen, so pure-deletion groups can be
+        // anchored in target coordinates. A zero-length target start denotes the line before the
+        // deletion gap; a non-zero start is the hunk's first target line.
+        let mut last_target_line = if hunk.target_length == 0 {
+            hunk.target_start
+        } else {
+            hunk.target_start.saturating_sub(1)
+        };
+        for line in hunk.lines() {
+            if line.is_added() {
+                added.push(line);
+                last_target_line = line.target_line_no.unwrap();
+            } else if line.is_removed() {
+                removed.push(line);
+            } else if line.is_context() {
+                flush_group(
+                    &mut removed,
+                    &mut added,
+                    last_target_line + 1,
+                    &mut line_changes,
+                )?;
+                last_target_line = line.target_line_no.unwrap();
+            }
+            // Other line types (the "\ No newline at end of file" marker) can appear between the
+            // removed and added runs of a group and must not affect grouping.
+        }
+        // Change groups never span hunks.
+        flush_group(
+            &mut removed,
+            &mut added,
+            last_target_line + 1,
+            &mut line_changes,
+        )?;
+    }
+    Ok(line_changes.into_iter().collect())
+}
+
+/// Appends `line_change` to `line_changes`, enforcing ascending order by line.
+///
+/// A valid unified diff always satisfies it. A violation means the diff's hunks are out of order
+/// or overlapping, so the diff is rejected instead of sorted into an order it does not have.
+fn push_line_change(
+    line_changes: &mut Vec<LineChange>,
+    line_change: LineChange,
+) -> anyhow::Result<()> {
+    if let Some(last) = line_changes.last()
+        && last.line > line_change.line
+    {
+        anyhow::bail!(
+            "diff hunks are out of order: a change at line {} follows a change at line {}",
+            line_change.line,
+            last.line
+        );
+    }
+    line_changes.push(line_change);
+    Ok(())
+}
+
+/// Emits [`LineChange`]s for a completed change group and clears the group buffers.
+///
+/// A change group is a contiguous run of removed and added lines between context lines (or hunk
+/// boundaries).
+fn flush_group(
+    removed: &mut Vec<&Line>,
+    added: &mut Vec<&Line>,
+    deletion_anchor_line: usize,
+    line_changes: &mut Vec<LineChange>,
+) -> anyhow::Result<()> {
+    if added.is_empty() {
+        // A purely deleted group is represented by a single line change at the target-file line
+        // now occupying the deleted region, since the deleted lines no longer exist there.
+        if !removed.is_empty() {
+            push_line_change(
+                line_changes,
+                LineChange {
+                    line: deletion_anchor_line,
+                    kind: LineChangeKind::Deleted,
+                },
+            )?;
+        }
+    } else {
+        let matched_removed_idxes = align_added_to_removed(removed, added);
+        for (i, added_line) in added.iter().enumerate() {
+            let kind = match &matched_removed_idxes {
+                // The group removed nothing, so the line is an insertion: it brings a line break
+                // that was not there before, on top of the characters it holds.
+                None => LineChangeKind::Added,
+                // The group rewrote the lines it removed into these, so it added no line break.
+                // A line the pairing found no counterpart for is still part of that rewrite, and
+                // every character it holds differs - but nothing past them does.
+                Some(idxes) => LineChangeKind::Modified(match idxes[i] {
+                    Some(j) => line_diff(&removed[j].value, &added_line.value),
+                    None => {
+                        let whole_line = 0..added_line.value.chars().count();
+                        vec![whole_line]
+                    }
+                }),
+            };
+            push_line_change(
+                line_changes,
+                LineChange {
+                    line: added_line.target_line_no.unwrap(),
+                    kind,
+                },
+            )?;
+        }
+        // Removed lines with no counterpart are dropped: their region is already covered by the
+        // added lines of the same group.
+    }
+    removed.clear();
+    added.clear();
+    Ok(())
+}
+
+/// Maximum `removed.len() * added.len()` of a change group for similarity-based pairing; larger
+/// groups fall back to positional pairing to bound the cost of the similarity matrix.
+const MAX_SIMILARITY_PAIRING_PAIRS: usize = 10_000;
+
+/// Maximum total bytes of a change group's lines for similarity-based pairing. Character-level
+/// diffs are super-linear in line length, and the piped diff may contain files blockwatch never
+/// validates (lockfiles, minified assets); oversized groups fall back to positional pairing.
+const MAX_SIMILARITY_PAIRING_BYTES: usize = 1 << 16;
+
+/// Pairs each added line of a change group with a removed line, preserving order.
+///
+/// Returns, for every added line, the index in `removed` it was paired with (if any). Pairs are
+/// anchored on the highest character-level similarity first (like Python's `difflib.Differ`) and
+/// the sublists on each side of an anchor are paired recursively, so pairs never cross. This keeps
+/// a lightly edited line (e.g. a block start tag gaining an attribute) paired with its old version
+/// even when the group's removed/added counts differ, instead of degrading it to a whole-line
+/// change.
+/// If no lines are removed returns `None`.
+fn align_added_to_removed(removed: &[&Line], added: &[&Line]) -> Option<Vec<Option<usize>>> {
+    if removed.is_empty() {
+        return None;
+    }
+    let total_bytes: usize = removed
+        .iter()
+        .chain(added.iter())
+        .map(|line| line.value.len())
+        .sum();
+    if removed.len() * added.len() > MAX_SIMILARITY_PAIRING_PAIRS
+        || total_bytes > MAX_SIMILARITY_PAIRING_BYTES
+    {
+        return Some(align_positionally(removed.len(), added.len()));
+    }
+    let mut result = vec![None; added.len()];
+    let ratios: Vec<Vec<f32>> = removed
+        .iter()
+        .map(|removed_line| {
+            added
+                .iter()
+                .map(|added_line| {
+                    similar::TextDiff::from_chars(
+                        removed_line.value.as_str(),
+                        added_line.value.as_str(),
+                    )
+                    .ratio()
+                })
+                .collect()
+        })
+        .collect();
+    anchor_best_pairs(&ratios, 0..removed.len(), 0..added.len(), &mut result);
+    Some(result)
+}
+
+/// Pairs each added line with the removed line at the same position within the group, leaving the
+/// excess on either side unmatched. The fallback for groups too large for similarity pairing.
+fn align_positionally(removed_count: usize, added_count: usize) -> Vec<Option<usize>> {
+    (0..added_count)
+        .map(|i| (i < removed_count).then_some(i))
+        .collect()
+}
+
+/// Pairs the most similar (removed, added) lines within the given index ranges, then recurses on
+/// the sub-ranges before and after the anchor. Ties keep the earliest pair, matching the previous
+/// positional behavior for groups of equally-similar lines.
+fn anchor_best_pairs(
+    ratios: &[Vec<f32>],
+    removed_range: Range<usize>,
+    added_range: Range<usize>,
+    result: &mut [Option<usize>],
+) {
+    if removed_range.is_empty() || added_range.is_empty() {
+        return;
+    }
+    let (mut best_removed, mut best_added, mut best_ratio) =
+        (removed_range.start, added_range.start, -1f32);
+    for i in removed_range.clone() {
+        for j in added_range.clone() {
+            if ratios[i][j] > best_ratio {
+                (best_removed, best_added, best_ratio) = (i, j, ratios[i][j]);
+            }
+        }
+    }
+    result[best_added] = Some(best_removed);
+    anchor_best_pairs(
+        ratios,
+        removed_range.start..best_removed,
+        added_range.start..best_added,
+        result,
+    );
+    anchor_best_pairs(
+        ratios,
+        best_removed + 1..removed_range.end,
+        best_added + 1..added_range.end,
+        result,
+    );
+}
+
+/// Returns sorted character ranges in `new` that represent changes from `old`.
+fn line_diff(old: &str, new: &str) -> Vec<Range<usize>> {
+    let mut result = Vec::new();
+    let diff = similar::TextDiff::from_chars(old, new);
+    let mut prev_op = None;
+    for op in diff.ops() {
+        match op {
+            DiffOp::Delete { new_index, .. } => {
+                if prev_op.is_none_or(|c: &DiffOp| !matches!(c, DiffOp::Delete { .. })) {
+                    let idx = new.chars().count().saturating_sub(1).min(*new_index);
+                    push_or_merge_range(&mut result, idx..idx + 1);
+                }
+            }
+            DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                push_or_merge_range(&mut result, *new_index..(new_index + new_len));
+            }
+            DiffOp::Replace {
+                new_index, new_len, ..
+            } => {
+                push_or_merge_range(&mut result, *new_index..(new_index + new_len));
+            }
+            DiffOp::Equal { .. } => {}
+        }
+        prev_op = Some(op);
+    }
+    result
+}
+
+fn push_or_merge_range(ranges: &mut Vec<Range<usize>>, mut new: Range<usize>) {
+    if let Some(overlapping) =
+        // Contiguous ranges are also merged (e.g. [6, 8) and [8, 10) -> [6, 10)).
+        ranges.pop_if(|range| new.start <= range.end && new.end >= range.start)
+    {
+        let start = new.start.min(overlapping.start);
+        let end = new.end.max(overlapping.end);
+        new = start..end;
+    }
+    ranges.push(new);
+    // Sink the new/merged range to its sorted position.
+    let mut i = ranges.len() - 1;
+    while i > 0 && ranges[i].start < ranges[i - 1].start {
+        ranges.swap(i, i - 1);
+        i -= 1;
+    }
+}
+
+#[cfg(test)]
+mod modified_line_ranges_tests {
+    use super::*;
+
+    #[test]
+    fn equal_lines_returns_empty_ranges() {
+        let ranges = line_diff("box", "box");
+
+        assert!(ranges.is_empty());
+    }
+
+    #[test]
+    fn replaced_nonconsecutive_characters_returns_separate_ranges() {
+        let ranges = line_diff("box", "for");
+
+        assert_eq!(ranges, vec![0..1, 2..3]);
+    }
+
+    #[test]
+    fn replaced_consecutive_characters_returns_merged_ranges() {
+        let ranges = line_diff("boxes", "faxed");
+
+        assert_eq!(ranges, vec![0..2, 4..5]);
+    }
+
+    #[test]
+    fn replaced_character_after_a_multi_byte_one_returns_a_character_range() {
+        let ranges = line_diff("café x", "café y");
+
+        assert_eq!(ranges, vec![5..6]);
+    }
+
+    #[test]
+    fn inserted_nonconsecutive_characters_returns_separate_ranges() {
+        let ranges = line_diff("box", "aboxa");
+
+        assert_eq!(ranges, vec![0..1, 4..5]);
+    }
+
+    #[test]
+    fn inserted_consecutive_characters_returns_merged_ranges() {
+        let ranges = line_diff("box", "2 boxes");
+
+        assert_eq!(ranges, vec![0..2, 5..7]);
+    }
+
+    #[test]
+    fn deleted_consecutive_characters_in_the_beginning_are_treated_as_single() {
+        let ranges = line_diff("abracadabra", "cadabra");
+
+        assert_eq!(ranges, vec![0..1]);
+    }
+
+    #[test]
+    fn deleted_consecutive_characters_in_the_end_are_treated_as_single() {
+        let ranges = line_diff("abracadabra", "abra");
+
+        assert_eq!(ranges, vec![3..4]);
+    }
+
+    #[test]
+    fn deleted_consecutive_characters_in_the_end_of_multibyte_string_bounds_to_char_count() {
+        // "абвг" has 4 characters and 8 UTF-8 bytes. The deletion occurs at character index 4.
+        let ranges = line_diff("абвгдеж", "абвг");
+
+        assert_eq!(ranges, vec![3..4]);
+    }
+
+    #[test]
+    fn deleted_consecutive_characters_are_treated_as_single() {
+        let ranges = line_diff("abracadabra", "cdar");
+
+        assert_eq!(ranges, vec![0..2, 3..4]);
+    }
+
+    #[test]
+    fn mixed_ops_returns_correct_ranges() {
+        let ranges = line_diff("there was three", "there is thora");
+
+        assert_eq!(ranges, vec![6..7, 11..12, 13..14]);
+    }
+}
+
+#[cfg(test)]
+mod validate_diff_input_tests {
+    use super::*;
+
+    #[test]
+    fn colorized_input_returns_error() {
+        // What `git diff --color=always` produces: the header lines carry SGR escapes.
+        let diff = "\u{1b}[1mdiff --git a/rules.py b/rules.py\u{1b}[m\n\
+\u{1b}[1m--- a/rules.py\u{1b}[m\n\
+\u{1b}[1m+++ b/rules.py\u{1b}[m\n\
+\u{1b}[36m@@ -1 +1 @@\u{1b}[m\n\
+\u{1b}[31m-apple\u{1b}[m\n\
+\u{1b}[32m+banana\u{1b}[m\n";
+
+        let err = validate_diff_input(diff).unwrap_err();
+
+        assert!(
+            err.to_string().contains("ANSI color escapes"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn input_without_a_diff_header_returns_error() {
+        let err = validate_diff_input("apple\nbanana\n").unwrap_err();
+
+        assert!(
+            err.to_string().contains("not a unified diff"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn deletion_only_diff_is_accepted() -> anyhow::Result<()> {
+        let diff = "diff --git a/rules.py b/rules.py\n\
+deleted file mode 100644\n\
+index 1234567..0000000\n\
+--- a/rules.py\n\
++++ /dev/null\n\
+@@ -1,2 +0,0 @@\n\
+-apple\n\
+-banana\n";
+
+        validate_diff_input(diff)
+    }
+
+    #[test]
+    fn empty_input_is_accepted() -> anyhow::Result<()> {
+        validate_diff_input("")
+    }
+
+    #[test]
+    fn whitespace_only_input_is_accepted() -> anyhow::Result<()> {
+        validate_diff_input(" \n\t\n")
+    }
+
+    #[test]
+    fn diff_without_git_headers_is_accepted() -> anyhow::Result<()> {
+        // Not every unified diff comes from Git; `diff -u` output has no `diff --git` line.
+        let diff = "--- rules.py\n\
++++ rules.py\n\
+@@ -1 +1 @@\n\
+-apple\n\
++banana\n";
+
+        validate_diff_input(diff)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::single_range_in_vec_init)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::path::Path;
+
+    /// Shorthand for the map key of a test fixture path.
+    fn key(path: &str) -> RepoPath {
+        RepoPath::from_reference(path).expect("test path is valid")
+    }
+
+    /// A working tree holding every path except those under a top-level directory named like one
+    /// of Git's prefixes, which is what an ordinary repository looks like. Tests needing a
+    /// specific file set seed one instead.
+    struct TypicalRepo;
+
+    impl FileSystem for TypicalRepo {
+        fn read(&self, _path: &Path) -> anyhow::Result<Vec<u8>> {
+            unimplemented!("diff parsing never reads file contents")
+        }
+
+        fn exists(&self, path: &Path) -> bool {
+            !matches!(
+                path.components()
+                    .next()
+                    .and_then(|c| c.as_os_str().to_str()),
+                Some("a") | Some("b")
+            )
+        }
+
+        fn repo_path(&self, _path: &Path) -> Option<RepoPath> {
+            unimplemented!("diff parsing never maps a path to the repository")
+        }
+
+        fn entry(&self, _path: &Path) -> Option<crate::fs::Entry> {
+            unimplemented!("diff parsing never resolves a path argument")
+        }
+
+        fn is_symlink(&self, _path: &RepoPath) -> bool {
+            false
+        }
+
+        fn walk(
+            &self,
+            _directory: Option<&RepoPath>,
+        ) -> impl Iterator<Item = anyhow::Result<RepoPath>> {
+            std::iter::empty()
+        }
+    }
+
+    /// Parses `diff` against an ordinary working tree.
+    fn changes(diff: &str) -> anyhow::Result<DiffChanges> {
+        line_changes_from_diff(diff, &TypicalRepo)
+    }
+
+    /// A working tree containing exactly the named files.
+    fn tree(files: &[&str]) -> crate::fs::test_utils::FakeFileSystem {
+        crate::fs::test_utils::FakeFileSystem::new(
+            files
+                .iter()
+                .map(|path| ((*path).to_string(), String::new()))
+                .collect::<HashMap<_, _>>(),
+        )
+    }
+
+    #[test]
+    fn keeps_a_top_level_directory_named_like_the_git_prefix() -> anyhow::Result<()> {
+        // Git writes `b/b/rules.py` for a file in a top-level directory named `b`. Stripping every
+        // repeated prefix would leave `rules.py` and validate an unrelated file.
+        let diff = "diff --git a/b/rules.py b/b/rules.py\n\
+--- a/b/rules.py\n\
++++ b/b/rules.py\n\
+@@ -1 +1 @@\n\
+-apple\n\
++banana\n";
+        let files = tree(&["b/rules.py", "rules.py"]);
+        let result = line_changes_from_diff(diff, &files)?;
+        assert!(result.mentions(&key("b/rules.py")));
+        assert!(!result.mentions(&key("rules.py")));
+        Ok(())
+    }
+
+    #[test]
+    fn decodes_a_quoted_non_ascii_target_path() -> anyhow::Result<()> {
+        let diff = "diff --git \"a/caf\\303\\251.py\" \"b/caf\\303\\251.py\"\n\
+--- \"a/caf\\303\\251.py\"\n\
++++ \"b/caf\\303\\251.py\"\n\
+@@ -1 +1 @@\n\
+-apple\n\
++banana\n";
+        let files = tree(&["café.py"]);
+        let result = line_changes_from_diff(diff, &files)?;
+        assert!(
+            result.mentions(&key("café.py")),
+            "unexpected keys: {:?}",
+            result.files().collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+
+    /// A newly added line.
+    fn added(line: usize) -> LineChange {
+        LineChange {
+            line,
+            kind: LineChangeKind::Added,
+        }
+    }
+
+    /// A deleted line.
+    fn deleted(line: usize) -> LineChange {
+        LineChange {
+            line,
+            kind: LineChangeKind::Deleted,
+        }
+    }
+
+    #[test]
+    fn unsorted_changes_collected_are_sorted_by_line() {
+        let changes: LineChanges = [added(3), deleted(1), added(2)].into_iter().collect();
+
+        assert_eq!(changes.0, vec![deleted(1), added(2), added(3)]);
+    }
+
+    #[test]
+    fn single_file_diff_extracts_ranges_for_single_file() -> anyhow::Result<()> {
+        let ranges = changes(
+            r#"diff --git a/Cargo.toml b/Cargo.toml
+index 8c34c48..23ddd69 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -9,6 +9,7 @@ tree-sitter = "0.25.3"
+ tree-sitter-rust = "0.23"
+ tree-sitter-java = "0.23.5"
+ quick-xml = "0.37.2"
++diffy = "0.4.2"
+ 
+ [build-dependencies]
+ cc="1.2.16"
+\ No newline at end of file"#,
+        )?;
+        assert_eq!(ranges.files().collect::<Vec<_>>(), vec![&key("Cargo.toml")]);
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_files_diff_extracts_ranges_for_multiple_files() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/Cargo.toml b/Cargo.toml
+index 8c34c48..23ddd69 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -9,6 +9,7 @@ tree-sitter = "0.25.3"
+ tree-sitter-rust = "0.23"
+ tree-sitter-java = "0.23.5"
+ quick-xml = "0.37.2"
++diffy = "0.4.2"
+ 
+ [build-dependencies]
+ cc="1.2.16"
+\ No newline at end of file
+diff --git a/src/main.rs b/src/main.rs
+index 63c5842..34d1d3f 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,4 +1,5 @@
+ mod parsers;
++mod differ;
+ 
+ fn main() {
+     println!("Hello, world!");
+diff --git a/src/differ.rs b/src/differ.rs
+index e69de29..215ed53 100644
+--- a/src/differ.rs
++++ b/src/differ.rs
+@@ -0,0 +1,1 @@
++use std::collections::HashMap;
+"#,
+        )?;
+        assert_eq!(
+            line_changes
+                .files()
+                .map(RepoPath::as_str)
+                .collect::<HashSet<_>>(),
+            HashSet::from(["Cargo.toml", "src/main.rs", "src/differ.rs"])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn single_new_line_diff_returns_single_line_change() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..b4b0c67 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,5 @@
+ one
+ two
+ three
++three and a half
+ four"#,
+        )?;
+        assert_eq!(line_changes.for_file(&key("a.txt")).0, vec![added(4)]);
+        Ok(())
+    }
+
+    #[test]
+    fn single_first_new_line_diff_returns_single_line_change() -> anyhow::Result<()> {
+        let ranges = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..fa220f8 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,3 +1,4 @@
++zero
+ one
+ two
+ three"#,
+        )?;
+        assert_eq!(ranges.for_file(&key("a.txt")).0, vec![added(1)]);
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_contiguous_new_lines_diff_returns_multiple_line_changes() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..3a7bc2a 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,6 @@
+ one
+ two
+ three
++three and a half
++almost four
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![added(4), added(5),]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_first_contiguous_new_lines_diff_returns_multiple_line_changes() -> anyhow::Result<()>
+    {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..3ccae75 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,3 +1,5 @@
++sub-zero
++zero
+ one
+ two
+ three"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![added(1), added(2),]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_non_contiguous_new_lines_diff_returns_multiple_line_changes() -> anyhow::Result<()>
+    {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..e797e7c 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,6 @@
+ one
+ two
++two and a half
+ three
++three and a half
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![added(3), added(5)]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_contiguous_new_line_groups_diff_returns_multiple_line_changes() -> anyhow::Result<()>
+    {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..ab47fb2 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,8 @@
+ one
+ two
++two and a half
++almost three
+ three
++three and a half
++almost four
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![added(3), added(4), added(6), added(7),]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn modified_line_returns_single_line_change_with_ranges() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..e4c2829 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,4 @@
+ one
+ two
+-there was three
++there is thora
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![LineChange {
+                line: 3,
+                // "i" in "is" was modified, "o" and "a" in "thora" were modified.
+                kind: LineChangeKind::Modified(vec![6..7, 11..12, 13..14])
+            }]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_non_consecutive_modified_line_returns_separate_line_changes_with_ranges()
+    -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..46c7533 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,5 +1,5 @@
+-one
++modified one
+ two
+-three white rabbits
++three rabbits
+ four
+-five brown foxes
++five own boxes
+ "#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![
+                LineChange {
+                    line: 1,
+                    // "modified " was inserted.
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 3,
+                    // "white " was deleted. Consecutive deletions are treated as single.
+                    kind: LineChangeKind::Modified(vec![6..7])
+                },
+                LineChange {
+                    line: 5,
+                    // "br" from "brown" was deleted. "b" in "boxes" was modified.
+                    kind: LineChangeKind::Modified(vec![5..6, 9..10])
+                }
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_consecutive_modified_lines_returns_single_line_changes_with_ranges()
+    -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..676cbb7 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,4 @@
+ one
+-two
+-three
++modified two
++modified three
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![
+                LineChange {
+                    line: 2,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 3,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                }
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn all_lines_replaced_returns_single_line_changes_with_ranges() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..676cbb7 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,2 @@
+-one
+-two
+-three
+-four
++modified one
++modified two"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![
+                LineChange {
+                    line: 1,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 2,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                }
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn single_deleted_line_returns_single_line_change() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..87a123c 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,3 @@
+ one
+ two
+-three
+ four"#,
+        )?;
+        assert_eq!(line_changes.for_file(&key("a.txt")).0, vec![deleted(3)]);
+        Ok(())
+    }
+
+    #[test]
+    fn single_first_deleted_line_returns_single_line_change() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..58ac960 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,3 @@
+-one
+ two
+ three
+ four"#,
+        )?;
+        assert_eq!(line_changes.for_file(&key("a.txt")).0, vec![deleted(1)]);
+        Ok(())
+    }
+
+    #[test]
+    fn single_last_deleted_line_returns_single_line_change() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..4cb29ea 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,3 @@
+ one
+ two
+ three
+-four"#,
+        )?;
+        assert_eq!(line_changes.for_file(&key("a.txt")).0, vec![deleted(4)]);
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_non_consecutive_deleted_lines_returns_separate_line_changes() -> anyhow::Result<()>
+    {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..8c05df4 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,2 @@
+-one
+ two
+-three
+ four"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![deleted(1), deleted(2)]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_consecutive_deleted_lines_returns_single_line_change() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..a9c7698 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,2 @@
+ one
+-two
+-three
+ four"#,
+        )?;
+        // Consecutive deleted lines are treated as a single one-line range because they no longer
+        // exist in the target file.
+        assert_eq!(line_changes.for_file(&key("a.txt")).0, vec![deleted(2)]);
+        Ok(())
+    }
+
+    #[test]
+    fn all_lines_deleted_treated_as_deleted_file() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..e69de29 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +0,0 @@
+-one
+-two
+-three
+-four"#,
+        )?;
+        assert!(line_changes.0.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_changes_returns_correct_line_changes() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..58a279e 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,4 +1,5 @@
+-one
++modified one
+ two
+-three
+-four
++modified three
++modified four
++added five"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("a.txt")).0,
+            vec![
+                LineChange {
+                    line: 1,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 3,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 4,
+                    kind: LineChangeKind::Modified(vec![0..9])
+                },
+                LineChange {
+                    line: 5,
+                    kind: LineChangeKind::Modified(vec![0.."added five".chars().count()])
+                },
+            ]
+        );
+        Ok(())
+    }
+
+    // Reproduces https://github.com/mennanov/blockwatch/issues/93: in a group with 2 deleted and
+    // 3 added lines, the edited block start tag line must pair with its old version (by
+    // similarity, not queue position) so its changed ranges stop before the closing `>` instead
+    // of degrading to a whole-line change that falsely intersects the block's content.
+    #[test]
+    fn diff_with_more_added_than_deleted_lines_pairs_modified_lines_by_similarity()
+    -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/deps.py b/deps.py
+index abc123..def456 100644
+--- a/deps.py
++++ b/deps.py
+@@ -1,2 +1,3 @@
+-# Project dependencies.
+-# <block name="deps" affects=":deps-docs">
++# Project dependencies, kept sorted
++# and unique.
++# <block name="deps" affects=":deps-docs" keep-sorted="asc">
+"#,
+        )?;
+        let changes = &line_changes.for_file(&key("deps.py")).0;
+        assert_eq!(changes.len(), 3);
+        // Line 1 pairs with the old comment line.
+        assert_eq!(changes[0].line, 1);
+        assert!(matches!(changes[0].kind, LineChangeKind::Modified(_)));
+        // Line 2 is the added line the pairing had no counterpart for. The group removed lines
+        // too, so the line is a rewrite covering all of its characters, not an insertion.
+        assert_eq!(
+            changes[1],
+            LineChange {
+                line: 2,
+                kind: LineChangeKind::Modified(vec![0.."# and unique.".chars().count()])
+            }
+        );
+        // Line 3 (the tag) pairs with the old tag line; its ranges must not reach the closing `>`
+        // (the last character of the line), which is where the block's content range begins.
+        assert_eq!(changes[2].line, 3);
+        let tag_line = r#"# <block name="deps" affects=":deps-docs" keep-sorted="asc">"#;
+        let LineChangeKind::Modified(tag_ranges) = &changes[2].kind else {
+            panic!(
+                "tag line should pair with its old version: {:?}",
+                changes[2]
+            );
+        };
+        assert!(
+            tag_ranges.iter().all(|r| r.end < tag_line.len()),
+            "ranges {tag_ranges:?} must end before the closing `>` at {}",
+            tag_line.len() - 1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn diff_replacing_one_line_with_three_lines_marks_every_added_line_as_modified()
+    -> anyhow::Result<()> {
+        let first = r#"/* <block name="source""#;
+        let second = r#"   affects="b.md:target""#;
+        let third = r#"   severity="error"> */"#;
+        let line_changes = changes(&format!(
+            "diff --git a/a.rs b/a.rs\n\
+             index abc123..def456 100644\n\
+             --- a/a.rs\n\
+             +++ b/a.rs\n\
+             @@ -1,3 +1,5 @@\n\
+             -// <block name=\"source\" affects=\"b.md:target\">\n\
+             +{first}\n\
+             +{second}\n\
+             +{third}\n\
+             \x20const PORT: u16 = 8080;\n\
+             \x20// </block>\n"
+        ))?;
+
+        let changes = &line_changes.for_file(&key("a.rs")).0;
+        assert_eq!(changes.len(), 3);
+        // The middle line keeps the `affects` value, so it is the one the pairing anchors on.
+        assert_eq!(changes[1].line, 2);
+        assert!(matches!(changes[1].kind, LineChangeKind::Modified(_)));
+        // The unpaired two hold no text of the removed line, so all of their characters differ -
+        // and nothing beyond them does.
+        assert_eq!(
+            changes[0],
+            LineChange {
+                line: 1,
+                kind: LineChangeKind::Modified(vec![0..first.chars().count()])
+            }
+        );
+        assert_eq!(
+            changes[2],
+            LineChange {
+                line: 3,
+                kind: LineChangeKind::Modified(vec![0..third.chars().count()])
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn out_of_order_hunks_returns_error() {
+        let err = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..b4b0c67 100644
+--- a/a.txt
++++ b/a.txt
+@@ -5 +5 @@
+-five
++FIVE
+@@ -1 +1 @@
+-one
++ONE
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            err.chain().any(|e| e.to_string().contains("out of order")),
+            "unexpected error: {err:#}"
+        );
+    }
+    #[test]
+    fn oversized_group_falls_back_to_positional_pairing() -> anyhow::Result<()> {
+        // The group holds three lines of this length, so their total exceeds the byte budget.
+        let line_len = MAX_SIMILARITY_PAIRING_BYTES / 3 + 1;
+        let long_line = "a".repeat(line_len);
+        let diff = format!(
+            "diff --git a/a.txt b/a.txt\n\
+             index f384549..b4b0c67 100644\n\
+             --- a/a.txt\n\
+             +++ b/a.txt\n\
+             @@ -1 +1,2 @@\n\
+             -{long_line}\n\
+             +{long_line}b\n\
+             +{long_line}\n"
+        );
+        let line_changes = changes(&diff)?;
+        let changes = &line_changes.for_file(&key("a.txt")).0;
+        assert_eq!(changes.len(), 2);
+        // Similarity pairing would prefer the identical added line 2; the positional fallback
+        // pairs the removed line with added line 1 and leaves line 2 as a pure insertion.
+        assert_eq!(changes[0].line, 1);
+        assert_eq!(
+            changes[0].kind,
+            LineChangeKind::Modified(vec![line_len..line_len + 1])
+        );
+        assert_eq!(
+            changes[1],
+            LineChange {
+                line: 2,
+                kind: LineChangeKind::Modified(vec![0..line_len])
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deletion_after_earlier_insertions_uses_target_line_number() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..b4b0c67 100644
+--- a/a.txt
++++ b/a.txt
+@@ -0,0 +1,5 @@
++pad one
++pad two
++pad three
++pad four
++pad five
+@@ -3,1 +7,0 @@
+-deleted content
+"#,
+        )?;
+        let changes = &line_changes.for_file(&key("a.txt")).0;
+        // Source line 3 sits at target position 8 after the five inserted lines: the deletion gap
+        // is between target lines 7 and 8.
+        assert_eq!(
+            changes,
+            &vec![added(1), added(2), added(3), added(4), added(5), deleted(8),]
+        );
+        Ok(())
+    }
+    #[test]
+    fn modified_last_line_without_trailing_newline_returns_single_line_change_with_ranges()
+    -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+index f384549..b4b0c67 100644
+--- a/a.txt
++++ b/a.txt
+@@ -5 +5 @@
+-#  </block>
+\ No newline at end of file
++# </block>
+\ No newline at end of file"#,
+        )?;
+        let changes = &line_changes.for_file(&key("a.txt")).0;
+        assert_eq!(changes.len(), 1, "unexpected changes: {changes:?}");
+        assert_eq!(changes[0].line, 5);
+        assert!(matches!(changes[0].kind, LineChangeKind::Modified(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn new_file_diff_returns_line_changes_for_every_line() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/example.rs b/example.rs
+new file mode 100644
+index 0000000..710d1d9
+--- /dev/null
++++ b/example.rs
+@@ -0,0 +1,3 @@
++fn main() {
++    println!("New file");
++}
+"#,
+        )?;
+        assert_eq!(
+            line_changes.for_file(&key("example.rs")).0,
+            vec![added(1), added(2), added(3)]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deleted_file_diff_is_ignored() -> anyhow::Result<()> {
+        let line_changes = changes(
+            r#"diff --git a/a.txt b/a.txt
+deleted file mode 100644
+index f384549..0000000
+--- a/a.txt
++++ /dev/null
+@@ -1,4 +0,0 @@
+-one
+-two
+-three
+-four"#,
+        )?;
+        assert!(line_changes.0.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn symlink_diff_is_ignored() -> anyhow::Result<()> {
+        // Git shows a new symlink as a new file whose one line is the path it points at.
+        let diff = r"diff --git a/AGENTS.md b/AGENTS.md
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1 +1 @@
+-rule
++rules
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 120000
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1 @@
++AGENTS.md
+\ No newline at end of file
+";
+
+        let files = tree(&["AGENTS.md"]).with_symlinks(&[("CLAUDE.md", "AGENTS.md")]);
+
+        let result = line_changes_from_diff(diff, &files)?;
+
+        assert!(result.mentions(&key("AGENTS.md")));
+        assert!(!result.mentions(&key("CLAUDE.md")));
+        Ok(())
+    }
+
+    #[test]
+    fn diff_with_parent_dir_traversal_target_path_returns_error() {
+        let err = changes(
+            r#"diff --git a/../../../etc/passwd b/../../../etc/passwd
+new file mode 100644
+index 0000000..710d1d9
+--- /dev/null
++++ b/../../../etc/passwd
+@@ -0,0 +1,1 @@
++pwned
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("escapes the repository root"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn diff_with_absolute_target_path_returns_error() {
+        // Git never writes an absolute target, so this is rejected for carrying no path prefix
+        // before the traversal check is ever reached. Either way it must not resolve.
+        let err = changes(
+            r#"diff --git a/etc/passwd b/etc/passwd
+new file mode 100644
+index 0000000..710d1d9
+--- /dev/null
++++ /etc/passwd
+@@ -0,0 +1,1 @@
++pwned
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("no recognized path prefix"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn modified_ranges_with_overlapping_column_span_returns_true() {
+        // 0-based range 4..10 covers characters at 1-based columns 5..11
+        let ranges = vec![4..10];
+        // Span 1-based 8..15 overlaps with 5..11
+        assert!(intersects_columns(&ranges, 8, 15));
+    }
+
+    #[test]
+    fn modified_ranges_with_non_overlapping_column_span_returns_false() {
+        // 0-based range 4..10 covers characters at 1-based columns 5..11
+        let ranges = vec![4..10];
+        // Span 1-based 1..5 ends before column 5
+        assert!(!intersects_columns(&ranges, 1, 5));
+        // Span 1-based 11..20 starts at column 11
+        assert!(!intersects_columns(&ranges, 11, 20));
+    }
+
+    #[test]
+    fn modified_ranges_with_unbounded_end_column_returns_true() {
+        let ranges = vec![10..20];
+        assert!(intersects_columns(&ranges, 5, usize::MAX));
+    }
+
+    #[test]
+    fn modified_ranges_touching_first_column_intersects_one_based_span() {
+        // 0-based range 0..1 covers the first character (1-based column 1).
+        let ranges = vec![0..1];
+        // Span covers 1-based column 1 ([1, 2)).
+        assert!(intersects_columns(&ranges, 1, 2));
+    }
+
+    #[test]
+    fn modified_ranges_at_column_boundary_intersects_span_starting_at_same_column() {
+        // 0-based range 4..5 covers the character at 1-based column 5.
+        let ranges = vec![4..5];
+        // Span [5, 6) starts at 1-based column 5.
+        assert!(intersects_columns(&ranges, 5, 6));
+    }
+}

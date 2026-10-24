@@ -1,0 +1,67 @@
+---
+name: qdrant-memory-usage-optimization
+description: "Diagnoses and reduces Qdrant memory usage. Use when someone reports 'memory too high', 'RAM keeps growing', 'node crashed', 'out of memory', 'memory leak', or asks 'why is memory usage so high?', 'how to reduce RAM?'. Also use when memory doesn't match calculations, quantization didn't help, or nodes crash during recovery."
+---
+
+# Understanding memory usage
+
+Qdrant operates with two types of memory:
+
+- Resident memory (aka RSSAnon) - memory used for internal data structures like the ID tracker, plus components that stay fully in RAM. As of Qdrant 1.20 the ID tracker has its own `memory` tier (default `pinned`; `cached` lets the OS evict it, `cold` needs no up-front RAM), where it was always resident before. On Qdrant 1.19 or newer this is controlled per-component with `memory: pinned` (e.g. quantized vectors, payload indexes); see [memory tier legacy settings](https://skills.qdrant.tech/md/documentation/ops-configuration/memory-tiers?s=legacy-settings) for deployments on version 1.18 or older.
+
+- OS page cache - memory used for caching disk reads, which can be released when needed. Original vectors are normally stored in page cache, so the service won't crash if RAM is full, but performance may degrade. On Qdrant 1.19 or newer this corresponds to `memory: cached` (pre-warmed into page cache at startup) or `memory: cold` (lazy disk reads, not pre-warmed); on 1.18 or older it's controlled via the `on_disk` boolean on vectors, HNSW config, sparse vector index, and payload index. See [Memory Tiers docs](https://skills.qdrant.tech/md/documentation/ops-configuration/memory-tiers/) (available on 1.19+).
+
+It is normal for the OS page cache to occupy all available RAM, but if resident memory is above 80% of total RAM, it is a sign of a problem.
+
+## Memory usage monitoring
+
+- Qdrant exposes memory usage through the `/metrics` endpoint. See [Monitoring docs](https://skills.qdrant.tech/md/documentation/ops-monitoring/monitoring/).
+
+<!-- ToDo: Talk about memory usage of each components once API is available -->
+
+
+## How much memory is needed for Qdrant?
+
+Optimal memory usage depends on the use case.
+
+- For regular search scenarios, general guidelines are provided in the [Capacity planning docs](https://skills.qdrant.tech/md/documentation/capacity-planning/).
+
+For a detailed breakdown of memory usage at large scale, see [Large scale memory usage example](https://skills.qdrant.tech/md/documentation/tutorials-operations/large-scale-search/?s=memory-usage).
+
+Payload indexes and HNSW graph also require memory, along with vectors themselves, so it's important to consider them in calculations.
+
+Additionally, Qdrant requires some extra memory for optimizations. During optimization, optimized segments are fully loaded into RAM, so it is important to leave enough headroom.
+The larger `max_segment_size` is, the more headroom is needed.
+
+
+### When to put HNSW index on disk
+
+Putting frequently used components (such as HNSW index) on disk might cause significant performance degradation. On Qdrant 1.19 or newer this is set with `memory: cold` in `hnsw_config`; on 1.18 or older with `hnsw_config.on_disk: true`.
+There are some scenarios, however, when it can be a good option:
+
+- Deployments with low latency disks - local NVMe or similar.
+- Multi-tenant deployments, where only a subset of tenants is frequently accessed, so that only a fraction of data & index is loaded in RAM at a time.
+- For deployments with [inline storage](https://skills.qdrant.tech/md/documentation/ops-optimization/optimize/?s=inline-storage-in-hnsw-index) enabled. On Qdrant 1.20 or newer, inline storage keeps the original vectors only in the HNSW index file, so `hnsw_config.memory` decides their tier and `vectors.memory` is ignored for those segments. Unless quantization has its own explicit `memory`, quantized vectors are `cold` when the HNSW index is `cold` and `pinned` in any other tier, so set it explicitly (for example `pinned`) if the index is `cold` but you want the quantized vectors in RAM [Inline storage](https://skills.qdrant.tech/md/documentation/ops-configuration/memory-tiers/?s=inline-storage).
+
+
+## How to minimize memory footprint
+
+The main challenge is to put on disk those parts of data, which are rarely accessed.
+Here are the main techniques to achieve that:
+
+- Use quantization to store only compressed vectors in RAM. On Qdrant 1.20 or newer, 8-bit TurboQuant (`bits8`, 4x compression) is the recommended default over scalar quantization at the same compression (use scalar for the Manhattan metric), and it doesn't rescore by default, unlike `bits2`, `bits1_5`, and `bits1` [Quantization docs](https://skills.qdrant.tech/md/documentation/manage-data/quantization/)
+
+- Use float16 or uint8 datatypes to reduce memory usage of vectors by 2x or 4x respectively, with some tradeoff in precision. `uint8` only makes sense for vectors already quantized to 0-255. On Qdrant 1.19 or newer, the TurboQuant datatypes replace the original vectors with a compressed form (dense vectors and multivectors, not sparse): `turbo4` (4 bits/dimension, ~8x, from 1.19), `turbo8` (~4x, closer to `float32` recall, from 1.20), and `turbo16` (~2x, from 1.20, closer to `float32` than `float16`). Any of them can be paired with 1-bit quantization for cheaper rescoring than pairing 1-bit quantization with full-precision vectors. A TurboQuant datatype is not TurboQuant quantization, which keeps the originals and adds a copy. Read more about vector datatypes in [documentation](https://skills.qdrant.tech/md/documentation/manage-data/vectors/?s=datatypes)
+
+- Leverage Matryoshka Representation Learning (MRL) to store only small vectors in RAM while keeping large vectors on disk. Examples of how to use MRL with Qdrant Cloud inference: [MRL docs](https://skills.qdrant.tech/md/documentation/inference/matryoshka-models/?s=reduce-vector-dimensionality-with-matryoshka-models)
+
+- For multi-tenant deployments with small tenants, vectors might be stored on disk because the same tenant's data is stored together [Multitenancy docs](https://skills.qdrant.tech/md/documentation/manage-data/multitenancy/?s=calibrate-performance)
+
+- For deployments with fast local storage and relatively low requirements for search throughput, it may be possible to store all components of vector store on disk. Read more about the performance implications of on-disk storage in [the article](https://skills.qdrant.tech/md/articles/memory-consumption/)
+
+- For low RAM environments, enable async I/O (`io_uring`) for concurrent disk reads, which can significantly improve performance of on-disk storage: `storage.performance.io_uring: auto` on Qdrant 1.19 or newer (applies to every `cold` structure), `async_scorer: true` on 1.18 or older (vector rescoring only). Requires Linux with a kernel that supports `io_uring` [Async I/O](https://skills.qdrant.tech/md/documentation/ops-configuration/memory-tiers/?s=async-io)
+
+- Keep payloads on disk: `memory: cold` is the default on Qdrant 1.19 or newer; on 1.18 or older, set `on_disk_payload: true` [Default tiers](https://skills.qdrant.tech/md/documentation/ops-configuration/memory-tiers/?s=default-tiers)
+- Configure payload indexes to be stored on disk: `memory: cold` on Qdrant 1.19 or newer, `on_disk: true` on 1.18 or older [docs](https://skills.qdrant.tech/md/documentation/manage-data/indexing/?s=on-disk-payload-index)
+- Configure sparse vectors to be stored on disk: `memory: cold` on the sparse vector index on Qdrant 1.19 or newer (defaults to `pinned`), `on_disk: true` on 1.18 or older [docs](https://skills.qdrant.tech/md/documentation/manage-data/indexing/?s=sparse-vector-index)
+

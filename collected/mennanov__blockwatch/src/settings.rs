@@ -1,0 +1,561 @@
+//! Project settings: how they are validated, and how the flags and the config file are merged.
+
+use crate::blocks::BlockAddress;
+use crate::paths_glob::glob_builder;
+use crate::validators::Validator;
+use anyhow::{Context, bail};
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
+
+/// Project-wide raw settings.
+///
+/// Can be constructed from a config file or the command line.
+/// The values are not guaranteed to be valid. The [`RawSettings::parse`] method parses them.
+#[derive(Debug, Default)]
+pub(crate) struct RawSettings {
+    /// Glob patterns of files to leave out.
+    pub(crate) ignore: Vec<String>,
+    /// Extra file extension mappings.
+    pub(crate) extensions: HashMap<String, String>,
+    /// The only validators to run.
+    pub(crate) enable: Vec<String>,
+    /// Validators to leave out.
+    pub(crate) disable: Vec<String>,
+    /// The addresses of the only blocks to check.
+    pub(crate) only_blocks: Vec<String>,
+    /// The addresses of blocks to leave out.
+    pub(crate) skip_blocks: Vec<String>,
+}
+
+impl RawSettings {
+    /// Checks all the setting values and returns them parsed.
+    ///
+    /// `supported_extensions` is a set of supported file extensions.
+    fn parse(&self, supported_extensions: &HashSet<&OsString>) -> anyhow::Result<ParsedSettings> {
+        let ignore = self
+            .ignore
+            .iter()
+            .map(|glob| {
+                glob_builder(glob)
+                    .build()
+                    .with_context(|| format!("invalid ignore glob pattern: {glob}"))
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let extensions = self
+            .extensions
+            .iter()
+            .map(|(key, value)| {
+                let language = OsString::from(value);
+                if !supported_extensions.contains(&language) {
+                    bail!("unsupported extension mapping: {key}={value}");
+                }
+                Ok((OsString::from(key), language))
+            })
+            .collect::<anyhow::Result<_>>()?;
+        Ok(ParsedSettings {
+            ignore,
+            extensions,
+            validator_selection: validator_selection(self)?,
+            block_selection: block_selection(self)?,
+        })
+    }
+}
+
+/// The settings from one place, after [`RawSettings::parse`]. [`Settings::resolve`] merges two of
+/// them, so the merge has no value left to check.
+#[derive(Debug)]
+struct ParsedSettings {
+    ignore: Vec<Glob>,
+    extensions: HashMap<OsString, OsString>,
+    validator_selection: ValidatorSelection,
+    block_selection: BlockSelection,
+}
+
+/// The validated settings for a run: the config file merged with the flags.
+///
+/// The fields are private, so the only way to get a `Settings` is [`Settings::resolve`], which
+/// checks every value.
+#[derive(Debug)]
+pub(crate) struct Settings {
+    ignored_globs: GlobSet,
+    extensions: HashMap<OsString, OsString>,
+    validator_selection: ValidatorSelection,
+    block_selection: BlockSelection,
+}
+
+impl Settings {
+    /// Validates the settings from the flags and from the config file, then merges them.
+    ///
+    /// Both are validated in full, even values that the other one overrides. When merging:
+    ///
+    /// - The ignore globs from both are used.
+    /// - The extension mappings from both are used. If both map the same extension, `flags` wins.
+    /// - If `flags` enables or disables any validator, the `enable` and `disable` lists of
+    ///   `config_file` are ignored.
+    /// - If `flags` lists any block to check or to skip, the `only_blocks` and `skip_blocks` lists
+    ///   of `config_file` are ignored.
+    ///
+    /// `supported_extensions` are the extensions that have a language parser. Returns an error if
+    /// either source has an invalid value. The error says which source it came from.
+    pub(crate) fn resolve(
+        flags: RawSettings,
+        config_file: RawSettings,
+        supported_extensions: &HashSet<&OsString>,
+    ) -> anyhow::Result<Settings> {
+        let flags = flags
+            .parse(supported_extensions)
+            .context("invalid command-line flags")?;
+        let config_file = config_file
+            .parse(supported_extensions)
+            .context("invalid config file")?;
+
+        // `-e keep-sorted` usually means "run only keep-sorted this time". Adding it to the config
+        // file's lists would not do that. It could also mix `enable` with `disable`, which is not
+        // allowed.
+        let validator_selection = match flags.validator_selection {
+            ValidatorSelection::All => config_file.validator_selection,
+            selection @ (ValidatorSelection::Only(_) | ValidatorSelection::Skip(_)) => selection,
+        };
+        // `--only-block` usually means "check only this block this time", even a block that the
+        // config file skips.
+        let block_selection = match flags.block_selection {
+            BlockSelection::All => config_file.block_selection,
+            selection @ (BlockSelection::Only(_) | BlockSelection::Skip(_)) => selection,
+        };
+
+        let mut ignored_globs = GlobSetBuilder::new();
+        for glob in config_file.ignore.into_iter().chain(flags.ignore) {
+            ignored_globs.add(glob);
+        }
+        // If an extension is mapped twice, the later mapping wins. The flags go last so that they
+        // win.
+        let extensions = config_file
+            .extensions
+            .into_iter()
+            .chain(flags.extensions)
+            .collect();
+
+        Ok(Settings {
+            ignored_globs: ignored_globs
+                .build()
+                .context("failed to build ignore glob set")?,
+            extensions,
+            validator_selection,
+            block_selection,
+        })
+    }
+
+    /// Files to skip, even if a glob selects them.
+    pub(crate) fn ignored_globs(&self) -> &GlobSet {
+        &self.ignored_globs
+    }
+
+    /// Maps an extension to a supported one. For example, `ino` to `cpp` makes `.ino` files parse
+    /// as C++.
+    pub(crate) fn extensions(&self) -> &HashMap<OsString, OsString> {
+        &self.extensions
+    }
+
+    /// Which validators the run uses.
+    pub(crate) fn validator_selection(&self) -> &ValidatorSelection {
+        &self.validator_selection
+    }
+
+    /// Which blocks the run checks.
+    pub(crate) fn block_selection(&self) -> &BlockSelection {
+        &self.block_selection
+    }
+}
+
+/// The validators that `settings` selects. Returns an error if a name is not a validator, or if
+/// both lists are set.
+fn validator_selection(settings: &RawSettings) -> anyhow::Result<ValidatorSelection> {
+    let parse = |names: &[String]| {
+        names
+            .iter()
+            .map(|name| parse_validator(name))
+            .collect::<anyhow::Result<HashSet<_>>>()
+    };
+    let enable = parse(&settings.enable)?;
+    let disable = parse(&settings.disable)?;
+    match (enable.is_empty(), disable.is_empty()) {
+        (true, true) => Ok(ValidatorSelection::All),
+        (false, true) => Ok(ValidatorSelection::Only(enable)),
+        (true, false) => Ok(ValidatorSelection::Skip(disable)),
+        (false, false) => bail!("`enable` and `disable` must not both be set"),
+    }
+}
+
+/// The blocks that `settings` selects. Returns an error if an address is not valid, or if both
+/// lists are set.
+fn block_selection(settings: &RawSettings) -> anyhow::Result<BlockSelection> {
+    let parse = |addresses: &[String]| {
+        addresses
+            .iter()
+            .map(|address| BlockAddress::parse(address))
+            .collect::<anyhow::Result<Vec<_>>>()
+    };
+    let only = parse(&settings.only_blocks)?;
+    let skip = parse(&settings.skip_blocks)?;
+    match (only.is_empty(), skip.is_empty()) {
+        (true, true) => Ok(BlockSelection::All),
+        (false, true) => Ok(BlockSelection::Only(only)),
+        (true, false) => Ok(BlockSelection::Skip(skip)),
+        (false, false) => bail!("`only-block` and `skip-block` must not both be set"),
+    }
+}
+
+/// Which validators a run uses.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ValidatorSelection {
+    /// Every validator.
+    All,
+    /// Only these validators.
+    Only(HashSet<Validator>),
+    /// Every validator except these.
+    Skip(HashSet<Validator>),
+}
+
+impl ValidatorSelection {
+    /// Whether the run uses `validator`.
+    pub(crate) fn includes(&self, validator: Validator) -> bool {
+        match self {
+            ValidatorSelection::All => true,
+            ValidatorSelection::Only(validators) => validators.contains(&validator),
+            ValidatorSelection::Skip(validators) => !validators.contains(&validator),
+        }
+    }
+}
+
+/// Which blocks a run checks. Each address is `FILE:BLOCK_NAME`.
+#[derive(Debug, PartialEq)]
+pub(crate) enum BlockSelection {
+    /// Every block.
+    All,
+    /// Only the blocks that an address selects.
+    Only(Vec<BlockAddress>),
+    /// Every block except the ones that an address selects.
+    Skip(Vec<BlockAddress>),
+}
+
+/// Looks up the validator called `value`. Returns an error if there is no validator with that name.
+pub(crate) fn parse_validator(value: &str) -> anyhow::Result<Validator> {
+    Validator::parse(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolve(flags: RawSettings, config_file: RawSettings) -> anyhow::Result<Settings> {
+        let (cpp, py) = (OsString::from("cpp"), OsString::from("py"));
+        Settings::resolve(flags, config_file, &HashSet::from([&cpp, &py]))
+    }
+
+    fn check_error(settings: RawSettings) -> String {
+        let cpp = OsString::from("cpp");
+        let error = settings
+            .parse(&HashSet::from([&cpp]))
+            .expect_err("the settings must be rejected");
+        format!("{error:#}")
+    }
+
+    fn to_string_vec(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    fn block_addresses(addresses: &[&str]) -> Vec<BlockAddress> {
+        addresses
+            .iter()
+            .map(|address| BlockAddress::parse(address).expect("a valid address"))
+            .collect()
+    }
+
+    #[test]
+    fn ignore_globs_in_flags_and_config_file_are_combined() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            ignore: to_string_vec(&["vendor/**"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            ignore: to_string_vec(&["generated/**"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(flags, config_file)?;
+        assert!(settings.ignored_globs.is_match("generated/a.rs"));
+        assert!(settings.ignored_globs.is_match("vendor/b.rs"));
+        assert!(!settings.ignored_globs.is_match("src/c.rs"));
+        Ok(())
+    }
+
+    #[test]
+    fn ignore_glob_with_empty_alternative_ignores_the_path_without_it() -> anyhow::Result<()> {
+        let config_file = RawSettings {
+            ignore: to_string_vec(&["{,sub/}a.rs"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(RawSettings::default(), config_file)?;
+        assert!(settings.ignored_globs.is_match("a.rs"));
+        assert!(settings.ignored_globs.is_match("sub/a.rs"));
+        assert!(!settings.ignored_globs.is_match("other/a.rs"));
+        Ok(())
+    }
+
+    #[test]
+    fn extensions_in_flags_and_config_file_are_combined() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            extensions: HashMap::from([("cxx".to_string(), "cpp".to_string())]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            extensions: HashMap::from([("pyw".to_string(), "py".to_string())]),
+            ..RawSettings::default()
+        };
+        assert_eq!(
+            resolve(flags, config_file)?.extensions,
+            HashMap::from([
+                (OsString::from("cxx"), OsString::from("cpp")),
+                (OsString::from("pyw"), OsString::from("py")),
+            ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn same_extension_in_flags_and_config_file_uses_the_flag() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            extensions: HashMap::from([("hpp".to_string(), "cpp".to_string())]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            extensions: HashMap::from([("hpp".to_string(), "py".to_string())]),
+            ..RawSettings::default()
+        };
+        assert_eq!(
+            resolve(flags, config_file)?.extensions,
+            HashMap::from([(OsString::from("hpp"), OsString::from("cpp"))])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn enable_in_config_file_runs_only_those_validators() -> anyhow::Result<()> {
+        let config_file = RawSettings {
+            enable: to_string_vec(&["keep-sorted"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(RawSettings::default(), config_file)?;
+        assert_eq!(
+            settings.validator_selection,
+            ValidatorSelection::Only(HashSet::from([Validator::KeepSorted]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn disable_in_config_file_skips_those_validators() -> anyhow::Result<()> {
+        let config_file = RawSettings {
+            disable: to_string_vec(&["check-ai"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(RawSettings::default(), config_file)?;
+        assert_eq!(
+            settings.validator_selection,
+            ValidatorSelection::Skip(HashSet::from([Validator::CheckAi]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn disable_flag_replaces_enable_in_config_file() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            disable: to_string_vec(&["check-ai"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            enable: to_string_vec(&["keep-sorted"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(flags, config_file)?;
+        assert_eq!(
+            settings.validator_selection,
+            ValidatorSelection::Skip(HashSet::from([Validator::CheckAi]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn enable_flag_replaces_disable_in_config_file() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            enable: to_string_vec(&["keep-sorted"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            disable: to_string_vec(&["check-ai"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(flags, config_file)?;
+        assert_eq!(
+            settings.validator_selection,
+            ValidatorSelection::Only(HashSet::from([Validator::KeepSorted]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn only_blocks_in_config_file_check_only_those_blocks() -> anyhow::Result<()> {
+        let config_file = RawSettings {
+            only_blocks: to_string_vec(&["a.py:fruits"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(RawSettings::default(), config_file)?;
+        assert_eq!(
+            settings.block_selection,
+            BlockSelection::Only(block_addresses(&["a.py:fruits"]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn skip_blocks_in_config_file_skip_those_blocks() -> anyhow::Result<()> {
+        let config_file = RawSettings {
+            skip_blocks: to_string_vec(&["a.py:fruits"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(RawSettings::default(), config_file)?;
+        assert_eq!(
+            settings.block_selection,
+            BlockSelection::Skip(block_addresses(&["a.py:fruits"]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn only_block_flag_replaces_skip_blocks_in_config_file() -> anyhow::Result<()> {
+        // A weekly job runs only the block that the config file skips on every other run.
+        let flags = RawSettings {
+            only_blocks: to_string_vec(&["a.py:fruits"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            skip_blocks: to_string_vec(&["a.py:fruits"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(flags, config_file)?;
+        assert_eq!(
+            settings.block_selection,
+            BlockSelection::Only(block_addresses(&["a.py:fruits"]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn skip_block_flag_replaces_only_blocks_in_config_file() -> anyhow::Result<()> {
+        let flags = RawSettings {
+            skip_blocks: to_string_vec(&["a.py:vegetables"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            only_blocks: to_string_vec(&["a.py:fruits"]),
+            ..RawSettings::default()
+        };
+        let settings = resolve(flags, config_file)?;
+        assert_eq!(
+            settings.block_selection,
+            BlockSelection::Skip(block_addresses(&["a.py:vegetables"]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bad_flag_is_rejected_as_a_flag_error() {
+        let flags = RawSettings {
+            extensions: HashMap::from([("cxx".to_string(), "cobol".to_string())]),
+            ..RawSettings::default()
+        };
+        let error = format!(
+            "{:#}",
+            resolve(flags, RawSettings::default()).expect_err("the flags must be rejected")
+        );
+        assert!(error.contains("invalid command-line flags"), "{error}");
+        assert!(error.contains("cxx=cobol"), "{error}");
+    }
+
+    #[test]
+    fn bad_config_file_value_is_rejected_even_if_a_flag_overrides_it() {
+        let flags = RawSettings {
+            enable: to_string_vec(&["keep-sorted"]),
+            ..RawSettings::default()
+        };
+        let config_file = RawSettings {
+            disable: to_string_vec(&["keep-tidy"]),
+            ..RawSettings::default()
+        };
+        let error = format!(
+            "{:#}",
+            resolve(flags, config_file).expect_err("the config file must be rejected")
+        );
+        assert!(error.contains("invalid config file"), "{error}");
+        assert!(error.contains("keep-tidy"), "{error}");
+    }
+
+    #[test]
+    fn ignore_glob_that_does_not_compile_is_rejected() {
+        let error = check_error(RawSettings {
+            ignore: to_string_vec(&["docs/**", "a/[b"]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("a/[b"), "{error}");
+    }
+
+    #[test]
+    fn extension_mapped_to_unsupported_language_is_rejected() {
+        let error = check_error(RawSettings {
+            extensions: HashMap::from([
+                ("cxx".to_string(), "cpp".to_string()),
+                ("hpp".to_string(), "cobol".to_string()),
+            ]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("hpp=cobol"), "{error}");
+    }
+
+    #[test]
+    fn unknown_validator_is_rejected() {
+        let error = check_error(RawSettings {
+            disable: to_string_vec(&["keep-sorted", "keep-tidy"]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("unknown validator: keep-tidy"), "{error}");
+    }
+
+    #[test]
+    fn enable_and_disable_together_are_rejected() {
+        let error = check_error(RawSettings {
+            enable: to_string_vec(&["keep-sorted"]),
+            disable: to_string_vec(&["check-ai"]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("`enable` and `disable`"), "{error}");
+    }
+
+    #[test]
+    fn block_address_without_a_block_name_is_rejected() {
+        let error = check_error(RawSettings {
+            skip_blocks: to_string_vec(&["a.py:fruits", "a.py"]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("expected FILE:BLOCK_NAME"), "{error}");
+    }
+
+    #[test]
+    fn only_blocks_and_skip_blocks_together_are_rejected() {
+        let error = check_error(RawSettings {
+            only_blocks: to_string_vec(&["a.py:fruits"]),
+            skip_blocks: to_string_vec(&["a.py:vegetables"]),
+            ..RawSettings::default()
+        });
+        assert!(error.contains("`only-block` and `skip-block`"), "{error}");
+    }
+}

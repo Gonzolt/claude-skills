@@ -1,0 +1,1002 @@
+openapi: '3.1.0'
+info:
+  title: TripAdvisor
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-02T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.tripadvisor.com
+    x-openweb:
+      transport: page
+paths:
+  /internal/searchLocation:
+    get:
+      operationId: searchLocation
+      summary: Search for a location by name via /Search page — returns geoId, locationSlug, and category links
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0004
+          tool_version: 1
+          signals:
+            - adapter-verified
+        adapter:
+          name: tripadvisor
+          operation: searchLocation
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Location search query (e.g. "Paris", "Tokyo", "New York").'
+          example: Tokyo
+      responses:
+        '200':
+          description: Location search results with geoIds and slugs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, results]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of matching locations.
+                  results:
+                    type: array
+                    description: Matching locations with geoIds and slugs.
+                    items:
+                      type: object
+                      required: [geoId, name, type]
+                      description: A location result from the TypeAheadJson API.
+                      properties:
+                        geoId:
+                          type: string
+                          description: 'TripAdvisor geo ID (use in searchHotels, getRestaurant, getAttractionReviews).'
+                        name:
+                          type: string
+                          description: Display name of the location.
+                        type:
+                          type: string
+                          description: 'Location type from TypeAheadJson API.'
+                        locationSlug:
+                          type: [string, 'null']
+                          description: 'URL slug for the location (use as "location" param in searchHotels).'
+                        url:
+                          type: string
+                          description: Full TripAdvisor URL for the location page.
+
+  /internal/searchHotels:
+    get:
+      operationId: searchHotels
+      summary: Search hotels by location — names, ratings, review counts from LD+JSON and DOM fallback
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0001
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Hotels-g{geoId}-{location}-Hotels.html
+          expression: |
+            (() => {
+              const addr = (a) => {
+                if (!a) return null;
+                const c = a.addressCountry;
+                return {
+                  street: a.streetAddress ?? null,
+                  city: a.addressLocality ?? null,
+                  region: a.addressRegion ?? null,
+                  country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                  postalCode: a.postalCode ?? null,
+                };
+              };
+              const hotelFrom = (item) => {
+                const agg = item.aggregateRating || null;
+                return {
+                  name: item.name ?? null, url: item.url ?? null,
+                  rating: agg?.ratingValue ?? null, reviewCount: agg?.reviewCount ?? null,
+                  priceRange: item.priceRange ?? null,
+                  address: addr(item.address || null),
+                  telephone: item.telephone ?? null, image: item.image ?? null,
+                };
+              };
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  if (d['@type'] !== 'ItemList') continue;
+                  const hotels = (d.itemListElement ?? []).map(li => hotelFrom(li.item ?? li));
+                  return { count: hotels.length, hotels };
+                } catch {}
+              }
+              const hotelTypes = new Set(['Hotel','LodgingBusiness','Hostel','Motel','BedAndBreakfast','Resort']);
+              const hotels = [];
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  if (types.some(x => hotelTypes.has(x))) hotels.push(hotelFrom(d));
+                } catch {}
+              }
+              if (hotels.length) return { count: hotels.length, hotels };
+              const domHotels = [];
+              for (const card of document.querySelectorAll('div[data-automation="hotel-card-title"], span.listItem, [data-testid*="hotel"]')) {
+                const a = card.querySelector('a[href*="Hotel_Review"]') ?? card.closest('a[href*="Hotel_Review"]');
+                if (!a) continue;
+                const name = (a.textContent?.trim() || card.textContent?.trim() || '');
+                if (name) domHotels.push({ name: name.substring(0, 120), url: a.href || null });
+              }
+              if (domHotels.length) return { count: domHotels.length, hotels: domHotels };
+              return { count: 0, hotels: [] };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID for the location (e.g. "60763" for New York City, "187147" for Paris).'
+          example: '60763'
+        - name: location
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Location name as URL slug (e.g. "New_York_City_New_York", "Paris_Ile_de_France").'
+          example: New_York_City_New_York
+      responses:
+        '200':
+          description: List of hotels from LD+JSON ItemList.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, hotels]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of hotels found.
+                  hotels:
+                    type: array
+                    description: Hotels matching the location search.
+                    items:
+                      type: object
+                      required: [name, url]
+                      description: A hotel listing from LD+JSON ItemList.
+                      properties:
+                        name:
+                          type: string
+                          description: Hotel name.
+                        url:
+                          type: string
+                          description: TripAdvisor URL for the hotel page.
+                        rating:
+                          type: [number, 'null']
+                          description: Aggregate rating out of 5.
+                        reviewCount:
+                          type: [integer, 'null']
+                          description: Total number of reviews.
+                        priceRange:
+                          type: [string, 'null']
+                          description: 'Price range indicator (e.g. "$", "$$-$$$").'
+                        address:
+                          type: [object, 'null']
+                          description: Hotel street address.
+                          properties:
+                            street:
+                              type: [string, 'null']
+                              description: Street address line.
+                            city:
+                              type: [string, 'null']
+                              description: City name.
+                            region:
+                              type: [string, 'null']
+                              description: State or region.
+                            country:
+                              type: [string, 'null']
+                              description: Country name.
+                            postalCode:
+                              type: [string, 'null']
+                              description: Postal or ZIP code.
+                        telephone:
+                          type: [string, 'null']
+                          description: Hotel phone number.
+                        image:
+                          type: [string, 'null']
+                          description: URL of the hotel thumbnail image.
+
+  /internal/getRestaurant:
+    get:
+      operationId: getRestaurant
+      summary: Get restaurant detail — name, cuisine, rating, reviews, hours, address from LD+JSON
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0002
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Restaurant_Review-g{geoId}-d{locationId}-Reviews-{slug}.html
+          expression: |
+            (() => {
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              const restTypes = new Set(['Restaurant','FoodEstablishment','BarOrPub','CafeOrCoffeeShop','FastFoodRestaurant','LocalBusiness']);
+              const parse = (data) => {
+                const a = data.address || null;
+                const c = a?.addressCountry;
+                const agg = data.aggregateRating || null;
+                const hours = data.openingHoursSpecification ?? [];
+                return {
+                  name: data.name ?? null, url: data.url ?? null, cuisine: data.servesCuisine ?? [],
+                  rating: agg?.ratingValue ?? null, reviewCount: agg?.reviewCount ?? null,
+                  priceRange: data.priceRange ?? null, telephone: data.telephone ?? null,
+                  menuUrl: data.hasMenu ?? data.menu ?? null,
+                  address: a ? {
+                    street: a.streetAddress ?? null, city: a.addressLocality ?? null,
+                    region: a.addressRegion ?? null,
+                    country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                    postalCode: a.postalCode ?? null,
+                  } : null,
+                  openingHours: hours.map(h => ({
+                    day: h.dayOfWeek ?? null, opens: h.opens ?? null, closes: h.closes ?? null,
+                  })),
+                  image: data.image ?? null,
+                };
+              };
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  if (types.some(x => restTypes.has(x))) return parse(d);
+                } catch {}
+              }
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  if (d.aggregateRating && d.name) return parse(d);
+                } catch {}
+              }
+              return { name: null };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID (e.g. "60763").'
+          example: '60763'
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Restaurant location ID (e.g. "457808" for Le Bernardin).'
+          example: '457808'
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Restaurant URL slug (e.g. "Le_Bernardin-New_York_City_New_York").'
+          example: Le_Bernardin-New_York_City_New_York
+      responses:
+        '200':
+          description: Restaurant detail from LD+JSON FoodEstablishment schema.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: [string, 'null']
+                    description: Restaurant name.
+                  url:
+                    type: [string, 'null']
+                    description: TripAdvisor URL for the restaurant page.
+                  cuisine:
+                    type: array
+                    items:
+                      type: string
+                    description: List of cuisine types served.
+                  rating:
+                    type: [number, 'null']
+                    description: Aggregate rating out of 5.
+                  reviewCount:
+                    type: [integer, 'null']
+                    description: Total number of reviews.
+                  priceRange:
+                    type: [string, 'null']
+                    description: 'Price range indicator (e.g. "$", "$$-$$$").'
+                  telephone:
+                    type: [string, 'null']
+                    description: Restaurant phone number.
+                  menuUrl:
+                    type: [string, 'null']
+                    description: URL to the restaurant menu page.
+                  address:
+                    type: [object, 'null']
+                    description: Restaurant street address.
+                    properties:
+                      street:
+                        type: [string, 'null']
+                        description: Street address line.
+                      city:
+                        type: [string, 'null']
+                        description: City name.
+                      region:
+                        type: [string, 'null']
+                        description: State or region.
+                      country:
+                        type: [string, 'null']
+                        description: Country name.
+                      postalCode:
+                        type: [string, 'null']
+                        description: Postal or ZIP code.
+                  openingHours:
+                    type: array
+                    description: Weekly opening hours schedule.
+                    items:
+                      type: object
+                      description: Opening hours for a specific day.
+                      required: [day, opens, closes]
+                      properties:
+                        day:
+                          type: string
+                          description: 'Day of the week (e.g. "Monday").'
+                        opens:
+                          type: string
+                          description: 'Opening time in HH:MM format.'
+                        closes:
+                          type: string
+                          description: 'Closing time in HH:MM format.'
+                  image:
+                    type: [string, 'null']
+                    description: URL of the restaurant thumbnail image.
+
+  /internal/getAttractionReviews:
+    get:
+      operationId: getAttractionReviews
+      summary: Get attraction info and reviews — name, rating, address plus review titles, text, and dates
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0003
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Attraction_Review-g{geoId}-d{locationId}-Reviews-{slug}.html
+          expression: |
+            (() => {
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              const attrTypes = new Set(['LocalBusiness','TouristAttraction','LandmarksOrHistoricalBuildings','Place','CivicStructure','Museum','Park']);
+              let attraction = { name: null };
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  const isMatch = types.some(x => attrTypes.has(x)) || (!attraction.name && d.aggregateRating && d.name);
+                  if (!isMatch) continue;
+                  const a = d.address || null;
+                  const c = a?.addressCountry;
+                  const agg = d.aggregateRating || null;
+                  attraction = {
+                    name: d.name ?? null,
+                    rating: agg?.ratingValue != null ? Number(agg.ratingValue) : null,
+                    reviewCount: agg?.reviewCount != null ? Number(agg.reviewCount) : null,
+                    address: a ? {
+                      street: a.streetAddress ?? null, city: a.addressLocality ?? null,
+                      region: a.addressRegion ?? null,
+                      country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                      postalCode: a.postalCode ?? null,
+                    } : null,
+                    telephone: d.telephone ?? null, image: d.image ?? null,
+                  };
+                  break;
+                } catch {}
+              }
+              const parseReview = (el) => {
+                const titleEl = el.querySelector('[data-test-target="review-title"] span, a[href*="Review"] span, [data-automation="reviewTitle"]');
+                const textEl = el.querySelector('[data-automation*="reviewText"] span, [data-automation*="reviewText"]');
+                let text = textEl?.textContent?.trim() ?? null;
+                if (!text) {
+                  for (const span of el.querySelectorAll('span')) {
+                    const t = span.textContent?.trim() ?? '';
+                    if (t.length > 30 && (!text || t.length > text.length)) text = t;
+                  }
+                }
+                const dateMatch = el.textContent?.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})/);
+                const ratingEl = el.querySelector('[class*="ui_bubble_rating"], [data-test-target="review-rating"] span');
+                let rating = null;
+                if (ratingEl) {
+                  const m = (ratingEl.className || '').match(/bubble_(\d)/);
+                  if (m) rating = Number(m[1]);
+                }
+                return {
+                  title: titleEl?.textContent?.trim() ?? null,
+                  text: text ? text.substring(0, 500) : null,
+                  date: dateMatch?.[1] ?? null,
+                  ...(rating != null ? { rating } : {}),
+                };
+              };
+              let reviewEls = document.querySelectorAll('[data-reviewid]');
+              if (!reviewEls.length) reviewEls = document.querySelectorAll('[data-automation="reviewCard"]');
+              const reviews = [];
+              if (reviewEls.length) {
+                for (const card of reviewEls) reviews.push(parseReview(card));
+              } else {
+                for (const titleEl of document.querySelectorAll('[data-test-target="review-title"]')) {
+                  const container = titleEl.closest('[class*="review"]') ?? titleEl.parentElement?.parentElement?.parentElement;
+                  if (container) reviews.push(parseReview(container));
+                }
+              }
+              return { ...attraction, reviews };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID (e.g. "60763").'
+          example: '60763'
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Attraction location ID (e.g. "104365" for Statue of Liberty).'
+          example: '104365'
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Attraction URL slug (e.g. "Statue_of_Liberty-New_York_City_New_York").'
+          example: Statue_of_Liberty-New_York_City_New_York
+      responses:
+        '200':
+          description: Attraction info from LD+JSON plus reviews from DOM.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: [string, 'null']
+                    description: Attraction name.
+                  rating:
+                    type: [number, 'null']
+                    description: Aggregate rating out of 5.
+                  reviewCount:
+                    type: [integer, 'null']
+                    description: Total number of reviews.
+                  address:
+                    type: [object, 'null']
+                    description: Attraction street address.
+                    properties:
+                      street:
+                        type: [string, 'null']
+                        description: Street address line.
+                      city:
+                        type: [string, 'null']
+                        description: City name.
+                      region:
+                        type: [string, 'null']
+                        description: State or region.
+                      country:
+                        type: [string, 'null']
+                        description: Country name.
+                      postalCode:
+                        type: [string, 'null']
+                        description: Postal or ZIP code.
+                  telephone:
+                    type: [string, 'null']
+                    description: Attraction phone number.
+                  image:
+                    type: [string, 'null']
+                    description: URL of the attraction thumbnail image.
+                  reviews:
+                    type: array
+                    description: User reviews extracted from DOM.
+                    items:
+                      type: object
+                      description: A single user review.
+                      properties:
+                        title:
+                          type: [string, 'null']
+                          description: Review headline.
+                        text:
+                          type: [string, 'null']
+                          description: Full review body text.
+                        date:
+                          type: [string, 'null']
+                          description: Review publication date.
+
+  /internal/getHotelDetail:
+    get:
+      operationId: getHotelDetail
+      summary: Get hotel details — name, rating, amenities, price range, star rating, check-in/out from LD+JSON
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0005
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Hotel_Review-g{geoId}-d{locationId}-Reviews-{slug}.html
+          expression: |
+            (() => {
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              const hotelTypes = new Set(['Hotel','LodgingBusiness','Hostel','Motel','BedAndBreakfast','Resort']);
+              const parseAddr = (a) => {
+                if (!a) return null;
+                const c = a.addressCountry;
+                return {
+                  street: a.streetAddress ?? null, city: a.addressLocality ?? null,
+                  region: a.addressRegion ?? null,
+                  country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                  postalCode: a.postalCode ?? null,
+                };
+              };
+              const parse = (d) => {
+                const agg = d.aggregateRating || null;
+                const amenities = d.amenityFeature;
+                return {
+                  name: d.name ?? null,
+                  url: d.url ?? null,
+                  rating: agg?.ratingValue != null ? Number(agg.ratingValue) : null,
+                  reviewCount: agg?.reviewCount != null ? Number(agg.reviewCount) : null,
+                  priceRange: d.priceRange ?? null,
+                  starRating: d.starRating != null ? Number(d.starRating?.ratingValue ?? d.starRating) : null,
+                  description: d.description ?? null,
+                  amenities: (amenities ?? []).map(a => (a.name ?? a.value ?? '')).filter(Boolean),
+                  address: parseAddr(d.address || null),
+                  telephone: d.telephone ?? null,
+                  checkinTime: d.checkinTime ?? null,
+                  checkoutTime: d.checkoutTime ?? null,
+                  image: d.image ?? null,
+                };
+              };
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  if (types.some(x => hotelTypes.has(x))) return parse(d);
+                } catch {}
+              }
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  if (d.aggregateRating && d.name) return parse(d);
+                } catch {}
+              }
+              return { name: null };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID (e.g. "60763").'
+          example: '60763'
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Hotel location ID (e.g. "93450" for The Plaza).'
+          example: '93450'
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Hotel URL slug (e.g. "The_Plaza-New_York_City_New_York").'
+          example: The_Plaza-New_York_City_New_York
+      responses:
+        '200':
+          description: Hotel detail from LD+JSON Hotel/LodgingBusiness schema.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: [string, 'null']
+                    description: Hotel name.
+                  url:
+                    type: [string, 'null']
+                    description: TripAdvisor URL for the hotel page.
+                  rating:
+                    type: [number, 'null']
+                    description: Aggregate rating out of 5.
+                  reviewCount:
+                    type: [integer, 'null']
+                    description: Total number of reviews.
+                  priceRange:
+                    type: [string, 'null']
+                    description: 'Price range indicator (e.g. "$", "$$-$$$").'
+                  starRating:
+                    type: [number, 'null']
+                    description: Hotel star classification (e.g. 5 for five-star).
+                  description:
+                    type: [string, 'null']
+                    description: Hotel description text.
+                  amenities:
+                    type: array
+                    items:
+                      type: string
+                    description: 'List of hotel amenities (e.g. "Free WiFi", "Pool", "Spa").'
+                  address:
+                    type: [object, 'null']
+                    description: Hotel street address.
+                    properties:
+                      street:
+                        type: [string, 'null']
+                        description: Street address line.
+                      city:
+                        type: [string, 'null']
+                        description: City name.
+                      region:
+                        type: [string, 'null']
+                        description: State or region.
+                      country:
+                        type: [string, 'null']
+                        description: Country name.
+                      postalCode:
+                        type: [string, 'null']
+                        description: Postal or ZIP code.
+                  telephone:
+                    type: [string, 'null']
+                    description: Hotel phone number.
+                  checkinTime:
+                    type: [string, 'null']
+                    description: Check-in time.
+                  checkoutTime:
+                    type: [string, 'null']
+                    description: Check-out time.
+                  image:
+                    type: [string, 'null']
+                    description: URL of the hotel thumbnail image.
+
+  /internal/getAttractionDetail:
+    get:
+      operationId: getAttractionDetail
+      summary: Get attraction details — name, rating, description, hours, address from LD+JSON
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0006
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Attraction_Review-g{geoId}-d{locationId}-Reviews-{slug}.html
+          expression: |
+            (() => {
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              const attrTypes = new Set(['LocalBusiness','TouristAttraction','LandmarksOrHistoricalBuildings','Place','CivicStructure','Museum','Park']);
+              const parseAddr = (a) => {
+                if (!a) return null;
+                const c = a.addressCountry;
+                return {
+                  street: a.streetAddress ?? null, city: a.addressLocality ?? null,
+                  region: a.addressRegion ?? null,
+                  country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                  postalCode: a.postalCode ?? null,
+                };
+              };
+              const parse = (d) => {
+                const agg = d.aggregateRating || null;
+                const hours = d.openingHoursSpecification ?? [];
+                return {
+                  name: d.name ?? null,
+                  url: d.url ?? null,
+                  description: d.description ?? null,
+                  rating: agg?.ratingValue != null ? Number(agg.ratingValue) : null,
+                  reviewCount: agg?.reviewCount != null ? Number(agg.reviewCount) : null,
+                  address: parseAddr(d.address || null),
+                  telephone: d.telephone ?? null,
+                  image: d.image ?? null,
+                  openingHours: hours.map(h => ({
+                    day: h.dayOfWeek ?? null,
+                    opens: h.opens ?? null,
+                    closes: h.closes ?? null,
+                  })),
+                };
+              };
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  if (types.some(x => attrTypes.has(x))) return parse(d);
+                } catch {}
+              }
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  if (d.aggregateRating && d.name) return parse(d);
+                } catch {}
+              }
+              return { name: null };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID (e.g. "60763").'
+          example: '60763'
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Attraction location ID (e.g. "104365" for Statue of Liberty).'
+          example: '104365'
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Attraction URL slug (e.g. "Statue_of_Liberty-New_York_City_New_York").'
+          example: Statue_of_Liberty-New_York_City_New_York
+      responses:
+        '200':
+          description: Attraction detail from LD+JSON TouristAttraction/LocalBusiness schema.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: [string, 'null']
+                    description: Attraction name.
+                  url:
+                    type: [string, 'null']
+                    description: TripAdvisor URL for the attraction page.
+                  description:
+                    type: [string, 'null']
+                    description: Attraction description text.
+                  rating:
+                    type: [number, 'null']
+                    description: Aggregate rating out of 5.
+                  reviewCount:
+                    type: [integer, 'null']
+                    description: Total number of reviews.
+                  address:
+                    type: [object, 'null']
+                    description: Attraction street address.
+                    properties:
+                      street:
+                        type: [string, 'null']
+                        description: Street address line.
+                      city:
+                        type: [string, 'null']
+                        description: City name.
+                      region:
+                        type: [string, 'null']
+                        description: State or region.
+                      country:
+                        type: [string, 'null']
+                        description: Country name.
+                      postalCode:
+                        type: [string, 'null']
+                        description: Postal or ZIP code.
+                  telephone:
+                    type: [string, 'null']
+                    description: Attraction phone number.
+                  image:
+                    type: [string, 'null']
+                    description: URL of the attraction thumbnail image.
+                  openingHours:
+                    type: array
+                    description: Weekly opening hours schedule.
+                    items:
+                      type: object
+                      description: Opening hours for a specific day.
+                      properties:
+                        day:
+                          type: [string, 'null']
+                          description: 'Day of the week (e.g. "Monday").'
+                        opens:
+                          type: [string, 'null']
+                          description: 'Opening time in HH:MM format.'
+                        closes:
+                          type: [string, 'null']
+                          description: 'Closing time in HH:MM format.'
+
+  /internal/searchRestaurants:
+    get:
+      operationId: searchRestaurants
+      summary: Search restaurants by location — names, ratings, cuisine, price range from LD+JSON and DOM fallback
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ta0007
+          tool_version: 1
+          signals:
+            - dom
+        extraction:
+          type: page_global_data
+          page_url: https://www.tripadvisor.com/Restaurants-g{geoId}-{location}.html
+          expression: |
+            (() => {
+              const parseAddr = (a) => {
+                if (!a) return null;
+                const c = a.addressCountry;
+                return {
+                  street: a.streetAddress ?? null, city: a.addressLocality ?? null,
+                  region: a.addressRegion ?? null,
+                  country: typeof c === 'object' && c ? (c.name ?? null) : (c ?? null),
+                  postalCode: a.postalCode ?? null,
+                };
+              };
+              const restFrom = (item) => {
+                const agg = item.aggregateRating || null;
+                const cuisineRaw = item.servesCuisine;
+                const imgRaw = item.image;
+                const image = typeof imgRaw === 'string' ? imgRaw
+                  : Array.isArray(imgRaw) ? (imgRaw[0] ?? null)
+                  : imgRaw && typeof imgRaw === 'object' ? (imgRaw.url ?? null)
+                  : null;
+                return {
+                  name: item.name ?? null,
+                  url: item.url ?? null,
+                  rating: agg?.ratingValue != null ? Number(agg.ratingValue) : null,
+                  reviewCount: agg?.reviewCount != null ? Number(agg.reviewCount) : null,
+                  priceRange: item.priceRange ?? null,
+                  cuisine: Array.isArray(cuisineRaw) ? cuisineRaw : cuisineRaw ? [cuisineRaw] : [],
+                  address: parseAddr(item.address || null),
+                  telephone: item.telephone ?? null,
+                  image,
+                };
+              };
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  if (d['@type'] !== 'ItemList') continue;
+                  const restaurants = (d.itemListElement ?? []).map(li => restFrom(li.item ?? li));
+                  return { count: restaurants.length, restaurants };
+                } catch {}
+              }
+              const restTypes = new Set(['Restaurant','FoodEstablishment','BarOrPub','CafeOrCoffeeShop','FastFoodRestaurant','LocalBusiness']);
+              const restaurants = [];
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent ?? '');
+                  const t = d['@type'];
+                  const types = Array.isArray(t) ? t : [t];
+                  if (types.some(x => restTypes.has(x))) restaurants.push(restFrom(d));
+                } catch {}
+              }
+              if (restaurants.length) return { count: restaurants.length, restaurants };
+              const domRestaurants = [];
+              for (const link of document.querySelectorAll('a[href*="Restaurant_Review"]')) {
+                const name = link.textContent?.trim() || '';
+                if (name && name.length > 1 && name.length < 120) {
+                  domRestaurants.push({ name, url: link.href || null });
+                }
+              }
+              const seen = new Set();
+              const unique = domRestaurants.filter(r => {
+                if (seen.has(r.name)) return false;
+                seen.add(r.name);
+                return true;
+              });
+              if (unique.length) return { count: unique.length, restaurants: unique };
+              return { count: 0, restaurants: [] };
+            })()
+      parameters:
+        - name: geoId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'TripAdvisor geo ID for the location (e.g. "60763" for New York City, "187147" for Paris).'
+          example: '60763'
+        - name: location
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Location name as URL slug (e.g. "New_York_City_New_York", "Paris_Ile_de_France").'
+          example: New_York_City_New_York
+      responses:
+        '200':
+          description: List of restaurants from LD+JSON ItemList.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, restaurants]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of restaurants found.
+                  restaurants:
+                    type: array
+                    description: Restaurants matching the location search.
+                    items:
+                      type: object
+                      required: [name, url]
+                      description: A restaurant listing from LD+JSON ItemList.
+                      properties:
+                        name:
+                          type: string
+                          description: Restaurant name.
+                        url:
+                          type: string
+                          description: TripAdvisor URL for the restaurant page.
+                        rating:
+                          type: [number, 'null']
+                          description: Aggregate rating out of 5.
+                        reviewCount:
+                          type: [integer, 'null']
+                          description: Total number of reviews.
+                        priceRange:
+                          type: [string, 'null']
+                          description: 'Price range indicator (e.g. "$", "$$-$$$").'
+                        cuisine:
+                          type: array
+                          items:
+                            type: string
+                          description: List of cuisine types served.
+                        address:
+                          type: [object, 'null']
+                          description: Restaurant street address.
+                          properties:
+                            street:
+                              type: [string, 'null']
+                              description: Street address line.
+                            city:
+                              type: [string, 'null']
+                              description: City name.
+                            region:
+                              type: [string, 'null']
+                              description: State or region.
+                            country:
+                              type: [string, 'null']
+                              description: Country name.
+                            postalCode:
+                              type: [string, 'null']
+                              description: Postal or ZIP code.
+                        telephone:
+                          type: [string, 'null']
+                          description: Restaurant phone number.
+                        image:
+                          type: [string, 'null']
+                          description: URL of the restaurant thumbnail image.

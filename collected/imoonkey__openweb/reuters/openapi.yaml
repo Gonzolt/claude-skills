@@ -1,0 +1,441 @@
+openapi: "3.1.0"
+info:
+  title: Reuters
+  version: "1.0.0"
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: "2026-04-01T23:00:00.000Z"
+    requires_auth: false
+servers:
+  - url: https://www.reuters.com
+    x-openweb:
+      transport: page
+paths:
+  /pf/api/v3/content/fetch/articles-by-search-v2:
+    get:
+      operationId: searchArticles
+      summary: "Search articles by keyword — title, description, canonical_url, published_time, word_count, authors, thumbnail"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: reuters_searchArticles_v1
+          tool_version: 2
+        adapter:
+          name: reuters-api
+          operation: searchArticles
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          description: "Search keyword or phrase"
+          schema:
+            type: string
+          example: "technology"
+        - name: offset
+          in: query
+          required: false
+          description: "Pagination offset (default 0)"
+          schema:
+            type: integer
+            default: 0
+          example: 0
+        - name: size
+          in: query
+          required: false
+          description: "Number of results to return (default 10, max 20)"
+          schema:
+            type: integer
+            default: 10
+          example: 5
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result]
+                properties:
+                  result:
+                    type: object
+                    description: Search result container.
+                    required: [articles]
+                    properties:
+                      pagination:
+                        type: object
+                        description: Pagination metadata.
+                        properties:
+                          size:
+                            type: integer
+                            description: Number of results returned.
+                          total_size:
+                            type: integer
+                            description: Total number of matching articles.
+                      articles:
+                        type: array
+                        description: Matching article summaries.
+                        items:
+                          type: object
+                          required: [id, title, canonical_url]
+                          description: An article summary.
+                          properties:
+                            id:
+                              type: string
+                              description: Unique article identifier.
+                            title:
+                              type: string
+                              description: Article headline.
+                            description:
+                              type: string
+                              description: Brief article summary or lede.
+                            canonical_url:
+                              type: string
+                              description: Canonical URL path for the article (use with getArticleDetail).
+                            published_time:
+                              type: string
+                              description: Publication timestamp (ISO 8601).
+                            updated_time:
+                              type: string
+                              description: Last update timestamp (ISO 8601).
+                            word_count:
+                              type: integer
+                              description: Article word count.
+                            read_minutes:
+                              type: integer
+                              description: Estimated reading time in minutes.
+                            authors:
+                              type: array
+                              description: Article authors.
+                              items:
+                                type: object
+                                required: [name]
+                                description: An author.
+                                properties:
+                                  name:
+                                    type: string
+                                    description: Author display name.
+                                  topic_url:
+                                    type: string
+                                    description: Author topic page URL path.
+                            thumbnail:
+                              type: object
+                              description: Article thumbnail image.
+                              properties:
+                                url:
+                                  type: string
+                                  description: Image URL.
+                                caption:
+                                  type: string
+                                  description: Image caption.
+                                alt_text:
+                                  type: string
+                                  description: Image alt text.
+
+  /pf/api/v3/content/fetch/articles-by-section-alias-or-id-v1:
+    get:
+      operationId: getTopicArticles
+      summary: "Get articles by topic/section — title, description, canonical_url, published_time, word_count, authors, thumbnail"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: reuters_getTopicArticles_v1
+          tool_version: 2
+        adapter:
+          name: reuters-api
+          operation: getTopicArticles
+      parameters:
+        - name: section_id
+          in: query
+          required: true
+          description: "Section path (e.g., /world/, /business/, /technology/, /markets/, /science/)"
+          schema:
+            type: string
+          example: "/world/"
+        - name: offset
+          in: query
+          required: false
+          description: "Pagination offset (default 0)"
+          schema:
+            type: integer
+            default: 0
+          example: 0
+        - name: size
+          in: query
+          required: false
+          description: "Number of articles (default 10, max 20)"
+          schema:
+            type: integer
+            default: 10
+          example: 5
+      responses:
+        "200":
+          description: Topic article list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result]
+                properties:
+                  result:
+                    type: object
+                    description: Topic result container.
+                    required: [articles]
+                    properties:
+                      pagination:
+                        type: object
+                        description: Pagination metadata.
+                        properties:
+                          size:
+                            type: integer
+                            description: Number of results returned.
+                          total_size:
+                            type: integer
+                            description: Total number of articles in section.
+                      articles:
+                        type: array
+                        description: Articles in the topic section.
+                        items:
+                          type: object
+                          required: [id, title, canonical_url]
+                          description: An article summary.
+                          properties:
+                            id:
+                              type: string
+                              description: Unique article identifier.
+                            title:
+                              type: string
+                              description: Article headline.
+                            description:
+                              type: string
+                              description: Brief article summary or lede.
+                            canonical_url:
+                              type: string
+                              description: Canonical URL path for the article (use with getArticleDetail).
+                            published_time:
+                              type: string
+                              description: Publication timestamp (ISO 8601).
+                            word_count:
+                              type: integer
+                              description: Article word count.
+                            read_minutes:
+                              type: integer
+                              description: Estimated reading time in minutes.
+                            authors:
+                              type: array
+                              description: Article authors.
+                              items:
+                                type: object
+                                required: [name]
+                                description: An author.
+                                properties:
+                                  name:
+                                    type: string
+                                    description: Author display name.
+                                  topic_url:
+                                    type: string
+                                    description: Author topic page URL path.
+                            thumbnail:
+                              type: object
+                              description: Article thumbnail image.
+                              properties:
+                                url:
+                                  type: string
+                                  description: Image URL.
+                                caption:
+                                  type: string
+                                  description: Image caption.
+                                alt_text:
+                                  type: string
+                                  description: Image alt text.
+
+  /reuters/article:
+    get:
+      operationId: getArticleDetail
+      summary: "Get full article content — title, body text, published date, authors, section, word count"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: reuters_getArticleDetail_v1
+          tool_version: 2
+        adapter:
+          name: reuters-api
+          operation: getArticleDetail
+      parameters:
+        - name: article_url
+          in: query
+          required: true
+          description: "Article canonical URL path from search or topic results (e.g., /world/us/some-article-slug-ABC123/)"
+          schema:
+            type: string
+          example: "/technology/cybersecurity/example-article-2025-04-01/"
+      responses:
+        "200":
+          description: Full article content
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result]
+                properties:
+                  result:
+                    type: object
+                    description: Article detail container.
+                    required: [title, body]
+                    properties:
+                      id:
+                        type: string
+                        description: Unique article identifier.
+                      title:
+                        type: string
+                        description: Article headline.
+                      description:
+                        type: string
+                        description: Brief article summary or lede.
+                      body:
+                        type: string
+                        description: "Full article text (paragraphs joined by double newlines)."
+                      published_time:
+                        type: string
+                        description: Publication timestamp (ISO 8601).
+                      updated_time:
+                        type: string
+                        description: Last update timestamp (ISO 8601).
+                      authors:
+                        type: array
+                        description: Article authors.
+                        items:
+                          type: object
+                          required: [name]
+                          description: An author.
+                          properties:
+                            name:
+                              type: string
+                              description: Author display name.
+                            topic_url:
+                              type: string
+                              description: Author topic page URL path.
+                      section:
+                        type: string
+                        description: Section the article belongs to (e.g., world, business).
+                      canonical_url:
+                        type: string
+                        description: Canonical URL path.
+                      word_count:
+                        type: integer
+                        description: Article word count.
+                      thumbnail:
+                        type: object
+                        nullable: true
+                        description: Article thumbnail image (may be null).
+                        properties:
+                          url:
+                            type: string
+                            description: Image URL.
+                          caption:
+                            type: string
+                            description: Image caption.
+                          alt_text:
+                            type: string
+                            description: Image alt text.
+
+  /reuters/top-news:
+    get:
+      operationId: getTopNews
+      summary: "Get top/breaking news stories from the Reuters homepage feed"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: reuters_getTopNews_v1
+          tool_version: 2
+        adapter:
+          name: reuters-api
+          operation: getTopNews
+      parameters:
+        - name: size
+          in: query
+          required: false
+          description: "Number of stories to return (default 10, max 20)"
+          schema:
+            type: integer
+            default: 10
+          example: 10
+      responses:
+        "200":
+          description: Top news stories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result]
+                properties:
+                  result:
+                    type: object
+                    description: Top news result container.
+                    required: [articles]
+                    properties:
+                      pagination:
+                        type: object
+                        description: Pagination metadata.
+                        properties:
+                          size:
+                            type: integer
+                            description: Number of results returned.
+                          total_size:
+                            type: integer
+                            description: Total number of top stories available.
+                      articles:
+                        type: array
+                        description: Top/breaking news articles.
+                        items:
+                          type: object
+                          required: [id, title, canonical_url]
+                          description: A top news article summary.
+                          properties:
+                            id:
+                              type: string
+                              description: Unique article identifier.
+                            title:
+                              type: string
+                              description: Article headline.
+                            description:
+                              type: string
+                              description: Brief article summary or lede.
+                            canonical_url:
+                              type: string
+                              description: Canonical URL path for the article (use with getArticleDetail).
+                            published_time:
+                              type: string
+                              description: Publication timestamp (ISO 8601).
+                            word_count:
+                              type: integer
+                              description: Article word count.
+                            read_minutes:
+                              type: integer
+                              description: Estimated reading time in minutes.
+                            authors:
+                              type: array
+                              description: Article authors.
+                              items:
+                                type: object
+                                required: [name]
+                                description: An author.
+                                properties:
+                                  name:
+                                    type: string
+                                    description: Author display name.
+                                  topic_url:
+                                    type: string
+                                    description: Author topic page URL path.
+                            thumbnail:
+                              type: object
+                              description: Article thumbnail image.
+                              properties:
+                                url:
+                                  type: string
+                                  description: Image URL.
+                                caption:
+                                  type: string
+                                  description: Image caption.
+                                alt_text:
+                                  type: string
+                                  description: Image alt text.

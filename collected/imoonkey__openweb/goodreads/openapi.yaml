@@ -1,0 +1,309 @@
+openapi: '3.1.0'
+info:
+  title: Goodreads
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-09T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.goodreads.com
+    x-openweb:
+      transport: node
+paths:
+  /search:
+    get:
+      operationId: searchBooks
+      summary: Search books by title, author, or ISBN — title, author, rating, cover image
+      x-openweb:
+        transport: node
+        permission: read
+        build:
+          verified: true
+          stable_id: gr0001
+          signature_id: gr0001s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: goodreads
+          operation: searchBooks
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query — book title, author name, or ISBN.
+          example: dune
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number (1-indexed, 20 results per page).
+          example: 1
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resultCount, items]
+                properties:
+                  resultCount:
+                    type: integer
+                    description: Number of results on this page.
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      description: A book search result.
+                      required: [bookId, title, author]
+                      properties:
+                        bookId:
+                          type: string
+                          description: Numeric book ID for use with getBook.
+                        title:
+                          type: string
+                          description: Book title.
+                        author:
+                          type: string
+                          description: Primary author name.
+                        authorId:
+                          type: string
+                          description: Numeric author ID for use with getAuthor.
+                        averageRating:
+                          type: [number, 'null']
+                          description: Average rating (0-5 scale).
+                        ratingsCount:
+                          type: [integer, 'null']
+                          description: Total number of ratings.
+                        coverImageUrl:
+                          type: [string, 'null']
+                          description: URL to the book cover thumbnail.
+  /book/show/{bookId}:
+    get:
+      operationId: getBook
+      summary: Get book details — title, author, rating, description, genres, page count, series, awards
+      x-openweb:
+        transport: node
+        permission: read
+        build:
+          verified: true
+          stable_id: gr0002
+          signature_id: gr0002s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: goodreads
+          operation: getBook
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Book ID from search results or URL (e.g. 44767458-dune or just 44767458).'
+          example: 44767458-dune
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [title, author]
+                properties:
+                  title:
+                    type: string
+                    description: Full book title.
+                  series:
+                    type: [string, 'null']
+                    description: 'Series name and position (e.g. "Silo #1").'
+                  author:
+                    type: string
+                    description: Primary author name.
+                  authorId:
+                    type: string
+                    description: Numeric author ID for use with getAuthor.
+                  ratingValue:
+                    type: [number, 'null']
+                    description: Average rating (0-5 scale).
+                  ratingsCount:
+                    type: [integer, 'null']
+                    description: Total number of ratings.
+                  reviewsCount:
+                    type: [integer, 'null']
+                    description: Total number of text reviews.
+                  description:
+                    type: [string, 'null']
+                    description: Book description/summary text.
+                  genres:
+                    type: array
+                    items:
+                      type: string
+                  pageCount:
+                    type: [integer, 'null']
+                    description: Number of pages.
+                  format:
+                    type: [string, 'null']
+                    description: 'Book format (e.g. "Paperback", "Kindle Edition").'
+                  publishDate:
+                    type: [string, 'null']
+                    description: Publication date or "First published YYYY-MM-DD".
+                  isbn:
+                    type: [string, 'null']
+                    description: ISBN-13 or ISBN.
+                  language:
+                    type: [string, 'null']
+                    description: Book language.
+                  awards:
+                    type: [string, 'null']
+                    description: Comma-separated awards won.
+                  coverImageUrl:
+                    type: [string, 'null']
+                    description: URL to the book cover image.
+  /book/show/{bookId}/reviews:
+    get:
+      operationId: getReviews
+      summary: Get reviews for a book — reviewer name, rating, review text, date, likes
+      x-openweb:
+        transport: node
+        permission: read
+        build:
+          verified: true
+          stable_id: gr0003
+          signature_id: gr0003s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: goodreads
+          operation: getReviews
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Book ID (e.g. 44767458-dune or 44767458).'
+          example: 44767458-dune
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [totalReviews, reviews]
+                properties:
+                  totalReviews:
+                    type: integer
+                    description: Number of reviews extracted from the page.
+                  reviews:
+                    type: array
+                    items:
+                      type: object
+                      description: A user review with rating and text.
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                          description: Reviewer display name.
+                        rating:
+                          type: [integer, 'null']
+                          description: Star rating (1-5).
+                        text:
+                          type: string
+                          description: Review text (truncated to 2000 chars).
+                        date:
+                          type: [string, 'null']
+                          description: 'Review date (e.g. "June 29, 2018").'
+                        likes:
+                          type: [integer, 'null']
+                          description: Number of likes on the review.
+  /author/show/{authorId}:
+    get:
+      operationId: getAuthor
+      summary: Get author profile — name, bio, born/died dates, average rating, bibliography
+      x-openweb:
+        transport: node
+        permission: read
+        build:
+          verified: true
+          stable_id: gr0004
+          signature_id: gr0004s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: goodreads
+          operation: getAuthor
+      parameters:
+        - name: authorId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Author ID from search results or URL (e.g. 58.Frank_Herbert or just 58).'
+          example: 58.Frank_Herbert
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                    description: Author full name.
+                  image:
+                    type: [string, 'null']
+                    description: Author photo URL.
+                  bio:
+                    type: [string, 'null']
+                    description: Author biography text.
+                  born:
+                    type: [string, 'null']
+                    description: 'Birth date (e.g. "October 08, 1920").'
+                  died:
+                    type: [string, 'null']
+                    description: 'Death date, if applicable.'
+                  website:
+                    type: [string, 'null']
+                    description: Author's personal website URL.
+                  genres:
+                    type: array
+                    items:
+                      type: string
+                  ratingValue:
+                    type: [number, 'null']
+                    description: Author average rating across all books.
+                  booksCount:
+                    type: integer
+                    description: Number of books listed on the author page.
+                  books:
+                    type: array
+                    items:
+                      type: object
+                      description: A book from the author's bibliography.
+                      required: [bookId, title]
+                      properties:
+                        bookId:
+                          type: string
+                          description: Numeric book ID for use with getBook.
+                        title:
+                          type: string
+                          description: Book title.
+                        averageRating:
+                          type: [number, 'null']
+                          description: Average rating (0-5 scale).
+                        ratingsCount:
+                          type: [integer, 'null']
+                          description: Total number of ratings.

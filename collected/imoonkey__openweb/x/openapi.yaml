@@ -1,0 +1,1262 @@
+openapi: 3.1.0
+info:
+  title: x
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-01T17:02:13.234000Z
+    requires_auth: true
+servers:
+- url: https://x.com
+  x-openweb:
+    transport: page
+    page_plan:
+      entry_url: https://x.com/home
+      wait_until: domcontentloaded
+      warm: true
+paths:
+  /internal/getHomeTimeline:
+    get:
+      operationId: getHomeTimeline
+      summary: "Get home timeline — tweets, retweets, promoted content with author info, engagement counts, cursor pagination"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 094ad7404e54e3b4
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getHomeTimeline
+      parameters:
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of tweets to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  home:
+                    type: object
+                    properties:
+                      home_timeline_urt:
+                        type: object
+                        properties:
+                          instructions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                entries:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      entryId:
+                                        type: string
+                                      sortIndex:
+                                        type: string
+                                      content:
+                                        type: object
+                          metadata:
+                            type: object
+
+                required:
+                - home
+  /internal/getTweetDetail:
+    get:
+      operationId: getTweetDetail
+      summary: "Get tweet detail — full tweet content, replies thread, author info, engagement counts, media, quoted tweets"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 40f50380aa7c842d
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getTweetDetail
+      parameters:
+      - name: focalTweetId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to get detail for
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threaded_conversation_with_injections_v2:
+                    type: object
+                    properties:
+                      instructions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            entries:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  entryId:
+                                    type: string
+                                  sortIndex:
+                                    type: string
+                                  content:
+                                    type: object
+                      metadata:
+                        type: object
+
+                required:
+                - threaded_conversation_with_injections_v2
+  /internal/getUserByScreenName:
+    get:
+      operationId: getUserByScreenName
+      summary: "Get user profile by screen name — name, bio, followers/following count, verified status, profile image, join date"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: b690ce172d53e653
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getUserByScreenName
+      parameters:
+      - name: screen_name
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Twitter screen name (without @)
+        example: openai
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        properties:
+                          __typename:
+                            type: string
+                          rest_id:
+                            type: string
+                          is_blue_verified:
+                            type: boolean
+                          core:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                              screen_name:
+                                type: string
+                              created_at:
+                                type: string
+                          legacy:
+                            type: object
+                            properties:
+                              description:
+                                type: string
+                              followers_count:
+                                type: integer
+                              friends_count:
+                                type: integer
+                              statuses_count:
+                                type: integer
+                              media_count:
+                                type: integer
+                              profile_banner_url:
+                                type: string
+                          verification:
+                            type: object
+                            properties:
+                              verified:
+                                type: boolean
+                              verified_type:
+                                type: string
+
+                required:
+                - user
+  /internal/searchTweets:
+    get:
+      operationId: searchTweets
+      summary: "Search tweets by keyword — tweet results with author info, engagement counts, media, cursor pagination"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 5c9b3e64cc81d1a8
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: searchTweets
+      parameters:
+      - name: rawQuery
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Search query
+        example: openai
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results
+      - name: product
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [Top, Latest, People, Photos, Videos]
+          default: Top
+        description: Search result type
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  search_by_raw_query:
+                    type: object
+                    properties:
+                      search_timeline:
+                        type: object
+                        properties:
+                          timeline:
+                            type: object
+                            properties:
+                              instructions:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    type:
+                                      type: string
+                                    entries:
+                                      type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          entryId:
+                                            type: string
+                                          sortIndex:
+                                            type: string
+                                          content:
+                                            type: object
+                              responseObjects:
+                                type: object
+
+                required:
+                - search_by_raw_query
+  /internal/getUserFollowers:
+    get:
+      operationId: getUserFollowers
+      summary: "Get user followers — list of follower profiles with bio, follow counts, verified status, cursor pagination"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 2aaf96a63e4e20f7
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getUserFollowers
+      parameters:
+      - name: userId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Numeric user ID (from getUserByScreenName → rest_id)"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of followers to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        properties:
+                          __typename:
+                            type: string
+                          timeline:
+                            type: object
+                            properties:
+                              timeline:
+                                type: object
+                                properties:
+                                  instructions:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        type:
+                                          type: string
+                                        entries:
+                                          type: array
+                                          items:
+                                            type: object
+                                            properties:
+                                              entryId:
+                                                type: string
+                                              sortIndex:
+                                                type: string
+                                              content:
+                                                type: object
+
+                required:
+                - user
+  /internal/getUserFollowing:
+    get:
+      operationId: getUserFollowing
+      summary: "Get user following — list of accounts the user follows with profile info, cursor pagination"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 7ac2c68ca93d8b16
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getUserFollowing
+      parameters:
+      - name: userId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Numeric user ID (from getUserByScreenName → rest_id)"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of following to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        properties:
+                          __typename:
+                            type: string
+                          timeline:
+                            type: object
+                            properties:
+                              timeline:
+                                type: object
+                                properties:
+                                  instructions:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        type:
+                                          type: string
+                                        entries:
+                                          type: array
+                                          items:
+                                            type: object
+                                            properties:
+                                              entryId:
+                                                type: string
+                                              sortIndex:
+                                                type: string
+                                              content:
+                                                type: object
+
+                required:
+                - user
+  /internal/getUserTweets:
+    get:
+      operationId: getUserTweets
+      summary: "Get user's tweets — timeline of tweets by a specific user with engagement counts, media, cursor pagination"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: c847d0a51b3bd2e1
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getUserTweets
+      parameters:
+      - name: userId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Numeric user ID (from getUserByScreenName → rest_id)"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of tweets to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        properties:
+                          __typename:
+                            type: string
+                          timeline:
+                            type: object
+                            properties:
+                              timeline:
+                                type: object
+                                properties:
+                                  instructions:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        type:
+                                          type: string
+                                        entries:
+                                          type: array
+                                          items:
+                                            type: object
+                                            properties:
+                                              entryId:
+                                                type: string
+                                              sortIndex:
+                                                type: string
+                                              content:
+                                                type: object
+
+                required:
+                - user
+  /internal/getExplorePage:
+    get:
+      operationId: getExplorePage
+      summary: "Get explore/trending page — trending topics, recommended content, news"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 6d8f4c2e1a3b5970
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getExplorePage
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Pagination cursor
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  explore_page:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      body:
+                        type: object
+                        properties:
+                          __typename:
+                            type: string
+                          timelines:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                labelText:
+                                  type: string
+                                timeline:
+                                  type: object
+
+                required:
+                - explore_page
+  /internal/likeTweet:
+    post:
+      operationId: likeTweet
+      summary: "Like a tweet"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: 8e1f27c7f48a6bf5
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: likeTweet
+      parameters:
+      - name: tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to like
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/unlikeTweet:
+    post:
+      operationId: unlikeTweet
+      summary: "Unlike a tweet"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: 4cb79114b9ccaa27
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: unlikeTweet
+      parameters:
+      - name: tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to unlike
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/createBookmark:
+    post:
+      operationId: createBookmark
+      summary: "Bookmark a tweet"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: b2c4ea53219c3d2a
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: createBookmark
+      parameters:
+      - name: tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to bookmark
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/deleteBookmark:
+    post:
+      operationId: deleteBookmark
+      summary: "Remove a tweet bookmark"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: d6e3a19c85c7f432
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: deleteBookmark
+      parameters:
+      - name: tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to unbookmark
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/createRetweet:
+    post:
+      operationId: createRetweet
+      summary: "Retweet a tweet"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: 3f7d28c951e2b4a6
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: createRetweet
+      parameters:
+      - name: tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Tweet ID to retweet
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/deleteRetweet:
+    post:
+      operationId: deleteRetweet
+      summary: "Undo a retweet"
+      x-openweb:
+        permission: write
+        build:
+          stable_id: 9a8bc3d4e5f61728
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: deleteRetweet
+      parameters:
+      - name: source_tweet_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Original tweet ID to un-retweet
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/createTweet:
+    post:
+      operationId: createTweet
+      summary: "Create a new tweet"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: a3b4c5d6e7f81920
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: createTweet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - text
+              properties:
+                text:
+                  type: string
+                  description: Tweet text content (max 280 chars)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  create_tweet:
+                    type: object
+                    properties:
+                      tweet_results:
+                        type: object
+                        properties:
+                          result:
+                            type: object
+                            properties:
+                              rest_id:
+                                type: string
+                              core:
+                                type: object
+                              legacy:
+                                type: object
+
+  /internal/deleteTweet:
+    post:
+      operationId: deleteTweet
+      summary: "Delete a tweet you own"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: b4c5d6e7f8a91021
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: deleteTweet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - tweet_id
+              properties:
+                tweet_id:
+                  type: string
+                  description: ID of the tweet to delete (must be yours)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  delete_tweet:
+                    type: object
+                    properties:
+                      tweet_results:
+                        type: object
+
+  /internal/reply:
+    post:
+      operationId: reply
+      summary: "Reply to a tweet"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: c5d6e7f8a9b01122
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: reply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - tweet_id
+              - text
+              properties:
+                tweet_id:
+                  type: string
+                  description: Tweet ID to reply to
+                text:
+                  type: string
+                  description: Reply text content (max 280 chars)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  create_tweet:
+                    type: object
+                    properties:
+                      tweet_results:
+                        type: object
+                        properties:
+                          result:
+                            type: object
+                            properties:
+                              rest_id:
+                                type: string
+                              core:
+                                type: object
+                              legacy:
+                                type: object
+
+  /internal/followUser:
+    post:
+      operationId: followUser
+      summary: "Follow a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: d6e7f8a9b0c11223
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: followUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to follow (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/unfollowUser:
+    post:
+      operationId: unfollowUser
+      summary: "Unfollow a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: e7f8a9b0c1d21324
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: unfollowUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to unfollow (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/blockUser:
+    post:
+      operationId: blockUser
+      summary: "Block a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: f8a9b0c1d2e31425
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: blockUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to block (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/unblockUser:
+    post:
+      operationId: unblockUser
+      summary: "Unblock a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: a9b0c1d2e3f41526
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: unblockUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to unblock (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/muteUser:
+    post:
+      operationId: muteUser
+      summary: "Mute a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: b0c1d2e3f4a51627
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: muteUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to mute (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/unmuteUser:
+    post:
+      operationId: unmuteUser
+      summary: "Unmute a user"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: c1d2e3f4a5b61728
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: unmuteUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  type: string
+                  description: "Numeric user ID to unmute (from getUserByScreenName → rest_id)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/hideReply:
+    post:
+      operationId: hideReply
+      summary: "Hide a reply to your tweet"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: d2e3f4a5b6c71829
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: hideReply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - tweet_id
+              properties:
+                tweet_id:
+                  type: string
+                  description: Reply tweet ID to hide (must be a reply to your tweet)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tweet_moderate_put:
+                    type: string
+
+  /internal/unhideReply:
+    post:
+      operationId: unhideReply
+      summary: "Unhide a previously hidden reply"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: e3f4a5b6c7d81930
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: unhideReply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - tweet_id
+              properties:
+                tweet_id:
+                  type: string
+                  description: Reply tweet ID to unhide
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tweet_unmoderate_put:
+                    type: string
+
+  /internal/sendDM:
+    post:
+      operationId: sendDM
+      summary: "Send a direct message (approved contacts only)"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: f4a5b6c7d8e91a31
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: sendDM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - recipientId
+              - text
+              properties:
+                recipientId:
+                  type: string
+                  description: "Numeric user ID of recipient (from getUserByScreenName → rest_id). Recipient must allow DMs from you."
+                text:
+                  type: string
+                  description: Message text
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/getNotifications:
+    get:
+      operationId: getNotifications
+      summary: "Get notification timeline — mentions, likes, retweets, follows, replies"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: b6c7d8e9f0a11c33
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getNotifications
+      parameters:
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of notifications to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/getUserLikes:
+    get:
+      operationId: getUserLikes
+      summary: "Get tweets liked by a user"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: c7d8e9f0a1b21d34
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getUserLikes
+      parameters:
+      - name: userId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Numeric user ID (from getUserByScreenName → rest_id)"
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of liked tweets to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /internal/getBookmarks:
+    get:
+      operationId: getBookmarks
+      summary: "Get your bookmarked tweets"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: d8e9f0a1b2c31e35
+          tool_version: 2
+          signals: [adapter-verified]
+        adapter:
+          name: x-graphql
+          operation: getBookmarks
+      parameters:
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of bookmarks to return
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object

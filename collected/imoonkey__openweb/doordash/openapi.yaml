@@ -1,0 +1,807 @@
+openapi: '3.1.0'
+info:
+  title: DoorDash API
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: true
+servers:
+  - url: https://www.doordash.com
+    x-openweb:
+      transport: page
+      auth:
+        type: cookie_session
+paths:
+  /graphql/autocompleteFacetFeed:
+    post:
+      operationId: searchRestaurants
+      summary: Search restaurants by keyword — returns names, categories, images, store IDs
+      x-openweb:
+        permission: read
+        adapter:
+          name: doordash-read
+          operation: searchRestaurants
+        build:
+          stable_id: dd0001
+          tool_version: 2
+          signals:
+            - adapter-verified
+          verified: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Search keyword (e.g. "pizza", "sushi", "thai").
+      responses:
+        '200':
+          description: Search results with matching restaurants and suggestions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - results
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - title
+                      properties:
+                        title:
+                          type: [string, 'null']
+                          description: Restaurant name or search suggestion.
+                        subtitle:
+                          type: [string, 'null']
+                          description: Distance or availability info.
+                        description:
+                          type: [string, 'null']
+                          description: Cuisine/category tags.
+                        imageUrl:
+                          type: [string, 'null']
+                          description: Cover image URL.
+                        storeId:
+                          type: [string, 'null']
+                          description: DoorDash store ID (null for search suggestions).
+                        resultType:
+                          type: [string, 'null']
+                          description: '"STORE" for restaurants, null for search suggestions.'
+                        rating:
+                          type: [number, 'null']
+                          description: Average star rating (e.g. 4.2).
+                        ratingCount:
+                          type: [string, 'null']
+                          description: Rating count display string.
+
+  /graphql/storepageFeed:
+    post:
+      operationId: getRestaurantMenu
+      summary: Get restaurant details and full menu — header info, categories, items with prices
+      x-openweb:
+        permission: read
+        adapter:
+          name: doordash-read
+          operation: getRestaurantMenu
+        build:
+          stable_id: dd0002
+          tool_version: 2
+          signals:
+            - adapter-verified
+          verified: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - storeId
+              properties:
+                storeId:
+                  type: string
+                  description: DoorDash store ID (from searchRestaurants).
+                menuId:
+                  type: string
+                  description: Specific menu ID. Omit for default menu.
+                fulfillmentType:
+                  type: string
+                  default: Delivery
+                  enum:
+                    - Delivery
+                    - Pickup
+                  description: Delivery or Pickup.
+      responses:
+        '200':
+          description: Store details and menu.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - storeHeader
+                  - menuBook
+                  - itemLists
+                properties:
+                  storeHeader:
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                        description: DoorDash store ID.
+                      name:
+                        type: string
+                        description: Restaurant name.
+                      description:
+                        type: string
+                      priceRange:
+                        type: integer
+                        description: Price tier (1–4).
+                      priceRangeDisplayString:
+                        type: string
+                      offersDelivery:
+                        type: boolean
+                      offersPickup:
+                        type: boolean
+                      isDashpassPartner:
+                        type: boolean
+                      coverSquareImgUrl:
+                        type: string
+                      address:
+                        type: object
+                        required:
+                          - displayAddress
+                        properties:
+                          city:
+                            type: string
+                          state:
+                            type: string
+                          street:
+                            type: string
+                          displayAddress:
+                            type: string
+                            description: Full display address.
+                      ratings:
+                        type: object
+                        required:
+                          - averageRating
+                        properties:
+                          numRatingsDisplayString:
+                            type: string
+                            description: Display string for rating count.
+                          averageRating:
+                            type: number
+                            description: Average star rating (e.g. 4.7).
+                      status:
+                        type: object
+                        required:
+                          - delivery
+                          - pickup
+                        properties:
+                          delivery:
+                            type: object
+                            required:
+                              - isAvailable
+                            properties:
+                              isAvailable:
+                                type: boolean
+                              minutes:
+                                type: string
+                                description: Estimated delivery time (e.g. "25-35").
+                              displayUnavailableStatus:
+                                type: [string, 'null']
+                          pickup:
+                            type: object
+                            required:
+                              - isAvailable
+                            properties:
+                              isAvailable:
+                                type: boolean
+                              minutes:
+                                type: string
+                              displayUnavailableStatus:
+                                type: [string, 'null']
+                      deliveryFeeLayout:
+                        type: object
+                        required:
+                          - title
+                        properties:
+                          title:
+                            type: string
+                          subtitle:
+                            type: string
+                      businessTags:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - name
+                          properties:
+                            name:
+                              type: string
+                  menuBook:
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - menuCategories
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                        description: Menu name (e.g. "Dinner", "All Day").
+                      displayOpenHours:
+                        type: string
+                      menuCategories:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                              description: Category name (e.g. "Popular Items", "Appetizers").
+                            numItems:
+                              type: integer
+                  itemLists:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - name
+                        - items
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                          description: Menu category name.
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            required:
+                              - id
+                              - name
+                              - displayPrice
+                            properties:
+                              id:
+                                type: string
+                                description: Menu item ID (use with addToCart).
+                              name:
+                                type: string
+                              description:
+                                type: string
+                              displayPrice:
+                                type: string
+                                description: Formatted price (e.g. "$12.99").
+                              imageUrl:
+                                type: string
+                              ratingDisplayString:
+                                type: [string, 'null']
+                              unitPrice:
+                                type: [integer, 'null']
+                                description: Item unit price in minor currency units (cents).
+                              currency:
+                                type: [string, 'null']
+                                description: ISO currency code (e.g. "USD").
+
+  /graphql/getConsumerOrdersWithDetails:
+    post:
+      operationId: getOrderHistory
+      summary: Get order history with details — store, items, totals, timestamps
+      x-openweb:
+        permission: read
+        unwrap: data
+        wrap: variables
+        build:
+          stable_id: dd0003
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            const: getConsumerOrdersWithDetails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operationName:
+                  type: string
+                  const: getConsumerOrdersWithDetails
+                query:
+                  type: string
+                  const: |-
+                    query getConsumerOrdersWithDetails($offset: Int!, $limit: Int!, $includeCancelled: Boolean) {
+                      getConsumerOrdersWithDetails(offset: $offset, limit: $limit, includeCancelled: $includeCancelled) {
+                        id orderUuid createdAt submittedAt cancelledAt fulfilledAt
+                        isPickup fulfillmentType
+                        store { id name business { id name } }
+                        orders {
+                          id
+                          items { id name quantity originalItemPrice }
+                        }
+                        grandTotal { unitAmount currency decimalPlaces displayString }
+                        deliveryAddress { id formattedAddress }
+                      }
+                    }
+                offset:
+                  type: integer
+                  default: 0
+                  description: Pagination offset.
+                limit:
+                  type: integer
+                  default: 10
+                  description: Number of orders to return (max 20).
+                includeCancelled:
+                  type: boolean
+                  default: true
+                  description: Include cancelled orders.
+      responses:
+        '200':
+          description: Order history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - getConsumerOrdersWithDetails
+                properties:
+                  getConsumerOrdersWithDetails:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - createdAt
+                        - store
+                        - orders
+                        - grandTotal
+                      properties:
+                        id:
+                          type: string
+                          description: Order ID.
+                        orderUuid:
+                          type: string
+                        createdAt:
+                          type: string
+                          description: Order creation timestamp.
+                        submittedAt:
+                          type: [string, 'null']
+                        cancelledAt:
+                          type: [string, 'null']
+                        fulfilledAt:
+                          type: [string, 'null']
+                        isPickup:
+                          type: boolean
+                        fulfillmentType:
+                          type: string
+                        store:
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            business:
+                              type: object
+                              required:
+                                - id
+                                - name
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                        orders:
+                          type: array
+                          items:
+                            type: object
+                            required:
+                              - id
+                              - items
+                            properties:
+                              id:
+                                type: string
+                              items:
+                                type: array
+                                items:
+                                  type: object
+                                  required:
+                                    - name
+                                    - quantity
+                                  properties:
+                                    id:
+                                      type: string
+                                    name:
+                                      type: string
+                                    quantity:
+                                      type: integer
+                                    originalItemPrice:
+                                      type: number
+                        grandTotal:
+                          type: object
+                          required:
+                            - displayString
+                            - unitAmount
+                            - currency
+                          properties:
+                            unitAmount:
+                              type: integer
+                              description: Total in smallest currency unit (cents).
+                            currency:
+                              type: string
+                            decimalPlaces:
+                              type: integer
+                            displayString:
+                              type: string
+                              description: Formatted total (e.g. "$24.99").
+                        deliveryAddress:
+                          type: [object, 'null']
+                          required:
+                            - id
+                          properties:
+                            id:
+                              type: string
+                            formattedAddress:
+                              type: [string, 'null']
+
+  /graphql/addCartItem:
+    post:
+      operationId: addToCart
+      summary: Add a menu item to DoorDash cart — returns cart ID, subtotal, item list
+      x-openweb:
+        permission: write
+        unwrap: data
+        wrap: variables
+        build:
+          stable_id: dd0004
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            const: addCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - addCartItemInput
+                - fulfillmentContext
+              properties:
+                operationName:
+                  type: string
+                  const: addCartItem
+                query:
+                  type: string
+                  const: |-
+                    mutation addCartItem($addCartItemInput: AddCartItemInput!, $fulfillmentContext: FulfillmentContextInput!, $cartContext: CartContextInput, $returnCartFromOrderService: Boolean) {
+                      addCartItemV2(
+                        addCartItemInput: $addCartItemInput
+                        fulfillmentContext: $fulfillmentContext
+                        cartContext: $cartContext
+                        returnCartFromOrderService: $returnCartFromOrderService
+                      ) {
+                        id
+                        subtotal
+                        currencyCode
+                        fulfillmentType
+                        restaurant { id name slug }
+                        orders {
+                          id
+                          orderItems {
+                            id
+                            quantity
+                            singlePrice
+                            priceDisplayString
+                            item { id name imageUrl price }
+                          }
+                        }
+                      }
+                    }
+                addCartItemInput:
+                  type: object
+                  required:
+                    - storeId
+                    - itemId
+                    - itemName
+                    - currency
+                    - unitPrice
+                    - menuId
+                  properties:
+                    storeId:
+                      type: string
+                      description: DoorDash store ID (from searchRestaurants or getRestaurantMenu).
+                    itemId:
+                      type: string
+                      description: Menu item ID (from getRestaurantMenu items[].id).
+                    itemName:
+                      type: string
+                      description: Item display name (from getRestaurantMenu items[].name).
+                    currency:
+                      type: string
+                      description: ISO currency code (e.g. "USD").
+                    unitPrice:
+                      type: integer
+                      description: Item unit price in minor currency units (cents).
+                    menuId:
+                      type: string
+                      description: Menu ID containing the item (from getRestaurantMenu menuBook.id or itemLists[].id).
+                    quantity:
+                      type: integer
+                      default: 1
+                      description: Quantity to add.
+                    specialInstructions:
+                      type: string
+                      default: ''
+                      description: Special instructions (e.g. "no onions").
+                    substitutionPreference:
+                      type: string
+                      default: substitute
+                    cartId:
+                      type: string
+                      default: ''
+                      description: Existing cart ID to append to. Empty string starts a new cart.
+                    isBundle:
+                      type: boolean
+                      default: false
+                    bundleType:
+                      type: string
+                      default: BUNDLE_TYPE_UNSPECIFIED
+                fulfillmentContext:
+                  type: object
+                  default:
+                    shouldUpdateFulfillment: false
+                    fulfillmentType: Delivery
+                cartContext:
+                  type: object
+                  default:
+                    isBundle: false
+                returnCartFromOrderService:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Cart update result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - addCartItemV2
+                properties:
+                  addCartItemV2:
+                    type: object
+                    required:
+                      - id
+                      - orders
+                    properties:
+                      id:
+                        type: string
+                        description: Cart UUID.
+                      subtotal:
+                        type: integer
+                        description: Cart subtotal in cents.
+                      currencyCode:
+                        type: string
+                      fulfillmentType:
+                        type: string
+                      restaurant:
+                        type: object
+                        required:
+                          - id
+                        properties:
+                          id:
+                            type: string
+                          name:
+                            type: [string, 'null']
+                          slug:
+                            type: string
+                      orders:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - id
+                            - orderItems
+                          properties:
+                            id:
+                              type: string
+                            orderItems:
+                              type: array
+                              items:
+                                type: object
+                                required:
+                                  - id
+                                  - quantity
+                                properties:
+                                  id:
+                                    type: string
+                                  quantity:
+                                    type: integer
+                                  singlePrice:
+                                    type: [integer, 'null']
+                                  priceDisplayString:
+                                    type: [string, 'null']
+                                  item:
+                                    type: object
+                                    required:
+                                      - id
+                                      - name
+                                    properties:
+                                      id:
+                                        type: string
+                                      name:
+                                        type: string
+                                      imageUrl:
+                                        type: string
+                                      price:
+                                        type: [integer, 'null']
+
+  /graphql/removeCartItem:
+    post:
+      operationId: removeFromCart
+      summary: Remove an item from DoorDash cart — returns updated cart with remaining items
+      x-openweb:
+        permission: write
+        safety: caution
+        unwrap: data
+        wrap: variables
+        build:
+          stable_id: dd0005
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            const: removeCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cartId
+                - itemId
+              properties:
+                operationName:
+                  type: string
+                  const: removeCartItem
+                query:
+                  type: string
+                  const: |-
+                    mutation removeCartItem($cartId: ID!, $itemId: ID!) {
+                      removeCartItemV2(cartId: $cartId, itemId: $itemId) {
+                        id
+                        subtotal
+                        currencyCode
+                        fulfillmentType
+                        restaurant { id name slug }
+                        orders {
+                          id
+                          orderItems {
+                            id
+                            quantity
+                            singlePrice
+                            priceDisplayString
+                            item { id name imageUrl price }
+                          }
+                        }
+                      }
+                    }
+                cartId:
+                  type: string
+                  description: Cart UUID (from addToCart response id).
+                itemId:
+                  type: string
+                  description: Order item ID to remove (from addToCart response orders[].orderItems[].id).
+      responses:
+        '200':
+          description: Updated cart after removal.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - removeCartItemV2
+                properties:
+                  removeCartItemV2:
+                    type: object
+                    required:
+                      - id
+                    properties:
+                      id:
+                        type: string
+                        description: Cart UUID.
+                      subtotal:
+                        type: [integer, 'null']
+                        description: Cart subtotal in cents. Null if cart is now empty.
+                      currencyCode:
+                        type: [string, 'null']
+                      fulfillmentType:
+                        type: [string, 'null']
+                      restaurant:
+                        type: [object, 'null']
+                        required:
+                          - id
+                        properties:
+                          id:
+                            type: string
+                          name:
+                            type: [string, 'null']
+                          slug:
+                            type: string
+                      orders:
+                        type: [array, 'null']
+                        items:
+                          type: object
+                          required:
+                            - id
+                            - orderItems
+                          properties:
+                            id:
+                              type: string
+                            orderItems:
+                              type: array
+                              items:
+                                type: object
+                                required:
+                                  - id
+                                  - quantity
+                                properties:
+                                  id:
+                                    type: string
+                                  quantity:
+                                    type: integer
+                                  singlePrice:
+                                    type: [integer, 'null']
+                                  priceDisplayString:
+                                    type: [string, 'null']
+                                  item:
+                                    type: object
+                                    required:
+                                      - id
+                                      - name
+                                    properties:
+                                      id:
+                                        type: string
+                                      name:
+                                        type: string
+                                      imageUrl:
+                                        type: string
+                                      price:
+                                        type: [integer, 'null']

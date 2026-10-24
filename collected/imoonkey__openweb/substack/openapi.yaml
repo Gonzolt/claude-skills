@@ -1,0 +1,366 @@
+openapi: '3.1.0'
+info:
+  title: Substack
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-24T00:00:00Z'
+    requires_auth: false
+servers:
+- url: https://substack.com
+  x-openweb:
+    transport: node
+paths:
+  /api/v1/top/search:
+    get:
+      operationId: searchPosts
+      summary: Search posts across all of Substack by keyword — returns title, subtitle, slug, post_date, canonical_url, publication info, reaction/comment counts
+      x-openweb:
+        transport: node
+        permission: read
+        adapter:
+          name: substack
+          operation: searchPosts
+        build:
+          stable_id: ss0001
+          tool_version: 4
+      parameters:
+      - name: query
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Search keyword (e.g. "artificial intelligence", "climate change").
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+        description: Page number for pagination (0-indexed).
+      responses:
+        '200':
+          description: Search results with matching posts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        title:
+                          type: string
+                        subtitle:
+                          type: [string, 'null']
+                        slug:
+                          type: string
+                        post_date:
+                          type: string
+                        canonical_url:
+                          type: string
+                        publishedBylines:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                        publication:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            subdomain:
+                              type: string
+                        reaction_count:
+                          type: integer
+                        comment_count:
+                          type: integer
+                        audience:
+                          type: string
+                  more:
+                    type: boolean
+                required:
+                - results
+  /api/v1/archive:
+    get:
+      operationId: getArchive
+      summary: List or search posts in a publication — title, subtitle, slug, post_date, audience, reaction/comment counts, cover image
+      x-openweb:
+        transport: node
+        permission: read
+        adapter:
+          name: substack
+          operation: getArchive
+        build:
+          stable_id: ss0002
+          tool_version: 4
+      parameters:
+      - name: subdomain
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Publication subdomain (e.g. "astralcodexten", "platformer", "mattstoller").
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [new, top]
+          default: new
+        description: Sort order — "new" (chronological) or "top" (by popularity).
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Search keyword to filter posts within this publication.
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+        description: Pagination offset.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 12
+        description: Number of posts to return (max ~50).
+      responses:
+        '200':
+          description: List of posts from the publication.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    subtitle:
+                      type: [string, 'null']
+                    slug:
+                      type: string
+                    type:
+                      type: string
+                    post_date:
+                      type: string
+                    canonical_url:
+                      type: string
+                    audience:
+                      type: string
+                    description:
+                      type: [string, 'null']
+                    word_count:
+                      type: [integer, 'null']
+                    reaction_count:
+                      type: integer
+                    comment_count:
+                      type: integer
+                    cover_image:
+                      type: [string, 'null']
+                    publishedBylines:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                  required:
+                  - id
+                  - slug
+  /api/v1/posts/{slug}:
+    get:
+      operationId: getPost
+      summary: Get full post/article by slug — title, body_html, word_count, post_date, audience, reaction/comment counts, author bylines, cover image
+      x-openweb:
+        transport: node
+        permission: read
+        adapter:
+          name: substack
+          operation: getPost
+        build:
+          stable_id: ss0003
+          tool_version: 4
+      parameters:
+      - name: subdomain
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Publication subdomain (e.g. "astralcodexten", "platformer").
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Post slug from archive or search results (e.g. "against-the-concept-of-telescopic").
+      responses:
+        '200':
+          description: Full post details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  subtitle:
+                    type: [string, 'null']
+                  slug:
+                    type: string
+                  type:
+                    type: string
+                  post_date:
+                    type: string
+                  canonical_url:
+                    type: string
+                  audience:
+                    type: string
+                  description:
+                    type: [string, 'null']
+                  body_html:
+                    type: [string, 'null']
+                    description: Full HTML content (may be truncated for paywalled posts).
+                  truncated_body_text:
+                    type: [string, 'null']
+                  word_count:
+                    type: [integer, 'null']
+                  reaction_count:
+                    type: integer
+                  comment_count:
+                    type: integer
+                  cover_image:
+                    type: [string, 'null']
+                  publishedBylines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        handle:
+                          type: [string, 'null']
+                        photo_url:
+                          type: [string, 'null']
+                required:
+                - id
+                - slug
+  /api/v1/post/{postId}/comments:
+    get:
+      operationId: getPostComments
+      summary: Get comments on a post — body, author name, date, reaction count, nested children
+      x-openweb:
+        transport: node
+        permission: read
+        adapter:
+          name: substack
+          operation: getPostComments
+        build:
+          stable_id: ss0004
+          tool_version: 4
+      parameters:
+      - name: subdomain
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Publication subdomain (e.g. "astralcodexten").
+      - name: postId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Post numeric ID (from getArchive or getPost response).
+      - name: token
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+        description: Comment access token (empty string for public comments).
+      - name: all_comments
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+        description: If true, return all comments including replies.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [best_first, newest_first, oldest_first]
+          default: best_first
+        description: Comment sort order.
+      responses:
+        '200':
+          description: Comments on the post.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        body:
+                          type: string
+                        date:
+                          type: string
+                        name:
+                          type: string
+                        user_id:
+                          type: integer
+                        photo_url:
+                          type: [string, 'null']
+                        reaction_count:
+                          type: integer
+                        children:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              body:
+                                type: string
+                              date:
+                                type: string
+                              name:
+                                type: string
+                              user_id:
+                                type: integer
+                              photo_url:
+                                type: [string, 'null']
+                              reaction_count:
+                                type: integer
+                required:
+                - comments

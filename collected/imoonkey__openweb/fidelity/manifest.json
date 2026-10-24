@@ -1,0 +1,14 @@
+{
+  "name": "fidelity",
+  "version": "1.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://fidelity.com",
+  "compiled_at": "2026-04-02T00:12:54.081Z",
+  "requires_auth": false,
+  "requires_browser": true,
+  "last_verified": "2026-04-02T00:28:35.959Z",
+  "fingerprint": {
+    "response_shape_hash": "getFundPerformance:dcc14dfc783d4b3d,getFundPicks:01be3c5d56da8fbb,getFundSummary:8567f266f40b083a,listAssetClasses:2f36c14ff7ec4e54,listFundFamilies:527af71e5453d633,searchFunds:05a9a442a70d2e08",
+    "last_validated": "2026-04-02T00:28:35.972Z"
+  }
+}

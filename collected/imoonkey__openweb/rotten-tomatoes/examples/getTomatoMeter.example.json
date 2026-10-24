@@ -1,0 +1,15 @@
+{
+  "operation_id": "getTomatoMeter",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "slug": "inception"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

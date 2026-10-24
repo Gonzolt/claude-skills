@@ -1,0 +1,17 @@
+{
+  "operation_id": "removeFromCart",
+  "method": "delete",
+  "replay_safety": "unsafe_mutation",
+  "order": 2,
+  "cases": [
+    {
+      "input": {
+        "lineId": "${prev.addToCart.summaryItems.0.lineId}"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

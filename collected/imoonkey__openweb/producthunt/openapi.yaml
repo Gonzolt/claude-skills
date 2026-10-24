@@ -1,0 +1,478 @@
+openapi: '3.1.0'
+info:
+  title: Product Hunt
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+  - url: https://www.producthunt.com
+    x-openweb:
+      transport: page
+      page_plan:
+        settle_ms: 6000
+paths:
+  /internal/getToday:
+    get:
+      operationId: getToday
+      summary: "Today's featured products — name, tagline, votes, rank"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ph0001
+          tool_version: 1
+          verified: true
+          signals:
+            - page_global_data
+        extraction:
+          type: page_global_data
+          page_url: /
+          expression: |
+            (() => {
+              const client = window.__APOLLO_CLIENT__;
+              if (!client) return [];
+              const cache = client.cache.extract();
+              const resolveRef = (r) => (r && typeof r === 'object' && '__ref' in r) ? (cache[r.__ref] ?? null) : r;
+              const extractTagline = (e) => {
+                if (e.tagline) return e.tagline;
+                const k = Object.keys(e).find(x => x.startsWith('tagline('));
+                return k ? e[k] : null;
+              };
+              const extractTopics = (e) => {
+                const k = Object.keys(e).find(x => x.startsWith('topics('));
+                const t = k ? e[k] : null;
+                if (!t || !t.edges) return [];
+                return t.edges.map(x => resolveRef(x.node)).filter(Boolean).map(n => n.name);
+              };
+              const formatPost = (p) => {
+                const product = resolveRef(p.product);
+                return {
+                  id: p.id, name: p.name, slug: p.slug,
+                  tagline: extractTagline(p),
+                  votesCount: p.latestScore ?? 0,
+                  commentsCount: p.commentsCount ?? 0,
+                  dailyRank: p.dailyRank ?? null,
+                  createdAt: p.createdAt ?? null,
+                  featuredAt: p.featuredAt ?? null,
+                  thumbnailUrl: p.thumbnailImageUuid ? ('https://ph-files.imgix.net/' + p.thumbnailImageUuid + '?auto=format&fit=crop&h=150&w=150') : null,
+                  topics: extractTopics(p),
+                  productSlug: (product && product.slug) ? product.slug : p.slug,
+                };
+              };
+              const root = cache.ROOT_QUERY;
+              if (!root) return [];
+              const key = Object.keys(root).find(k => k.includes('homefeed') && k.includes('TODAY'));
+              if (!key) return [];
+              const feed = resolveRef(root[key]);
+              if (!feed || !feed.edges) return [];
+              const pages = feed.edges.map(e => resolveRef(e.node)).filter(Boolean);
+              const posts = [];
+              for (const fp of pages) {
+                if (!fp.items) continue;
+                for (const ref of fp.items) {
+                  const item = resolveRef(ref);
+                  if (!item || item.__typename !== 'Post') continue;
+                  posts.push(formatPost(item));
+                }
+              }
+              return posts;
+            })()
+      responses:
+        '200':
+          description: Array of today's featured products.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, slug, votesCount, commentsCount]
+                  properties:
+                    id:
+                      type: string
+                      description: Post ID.
+                    name:
+                      type: string
+                      description: Product name.
+                    slug:
+                      type: string
+                      description: URL slug for the product.
+                    tagline:
+                      type:
+                        - string
+                        - 'null'
+                      description: Short product tagline.
+                    votesCount:
+                      type: integer
+                      description: Total upvotes.
+                    commentsCount:
+                      type: integer
+                      description: Total comments.
+                    dailyRank:
+                      type:
+                        - string
+                        - 'null'
+                      description: 'Rank for the day, e.g. "1".'
+                    createdAt:
+                      type:
+                        - string
+                        - 'null'
+                      description: ISO timestamp when posted.
+                    featuredAt:
+                      type:
+                        - string
+                        - 'null'
+                      description: ISO timestamp when featured.
+                    thumbnailUrl:
+                      type:
+                        - string
+                        - 'null'
+                      description: Product thumbnail image URL.
+                    topics:
+                      type: array
+                      items:
+                        type: string
+                      description: Topic names.
+                    productSlug:
+                      type: string
+                      description: Slug for the product page.
+  /internal/getPosts:
+    get:
+      operationId: getPosts
+      summary: 'Featured posts by section — today, yesterday, last week, last month'
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ph0002
+          tool_version: 1
+          verified: true
+          signals:
+            - page_global_data
+        extraction:
+          type: page_global_data
+          page_url: /
+          expression: |
+            (() => {
+              const client = window.__APOLLO_CLIENT__;
+              if (!client) return [];
+              const cache = client.cache.extract();
+              const section = (new URLSearchParams(location.search).get('section') || 'TODAY').toUpperCase();
+              const resolveRef = (r) => (r && typeof r === 'object' && '__ref' in r) ? (cache[r.__ref] ?? null) : r;
+              const extractTagline = (e) => {
+                if (e.tagline) return e.tagline;
+                const k = Object.keys(e).find(x => x.startsWith('tagline('));
+                return k ? e[k] : null;
+              };
+              const extractTopics = (e) => {
+                const k = Object.keys(e).find(x => x.startsWith('topics('));
+                const t = k ? e[k] : null;
+                if (!t || !t.edges) return [];
+                return t.edges.map(x => resolveRef(x.node)).filter(Boolean).map(n => n.name);
+              };
+              const formatPost = (p) => {
+                const product = resolveRef(p.product);
+                return {
+                  id: p.id, name: p.name, slug: p.slug,
+                  tagline: extractTagline(p),
+                  votesCount: p.latestScore ?? 0,
+                  commentsCount: p.commentsCount ?? 0,
+                  dailyRank: p.dailyRank ?? null,
+                  createdAt: p.createdAt ?? null,
+                  featuredAt: p.featuredAt ?? null,
+                  thumbnailUrl: p.thumbnailImageUuid ? ('https://ph-files.imgix.net/' + p.thumbnailImageUuid + '?auto=format&fit=crop&h=150&w=150') : null,
+                  topics: extractTopics(p),
+                  productSlug: (product && product.slug) ? product.slug : p.slug,
+                };
+              };
+              const root = cache.ROOT_QUERY;
+              if (!root) return [];
+              const key = Object.keys(root).find(k => k.includes('homefeed') && k.includes(section));
+              if (!key) return [];
+              const feed = resolveRef(root[key]);
+              if (!feed || !feed.edges) return [];
+              const pages = feed.edges.map(e => resolveRef(e.node)).filter(Boolean);
+              const posts = [];
+              for (const fp of pages) {
+                if (!fp.items) continue;
+                for (const ref of fp.items) {
+                  const item = resolveRef(ref);
+                  if (!item || item.__typename !== 'Post') continue;
+                  posts.push(formatPost(item));
+                }
+              }
+              return posts;
+            })()
+      parameters:
+        - name: section
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - TODAY
+              - YESTERDAY
+              - LAST_WEEK
+              - LAST_MONTH
+            default: TODAY
+          description: Time section to fetch posts from.
+          example: TODAY
+      responses:
+        '200':
+          description: Array of featured posts for the given section.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, slug, votesCount, commentsCount]
+                  properties:
+                    id:
+                      type: string
+                      description: Post ID.
+                    name:
+                      type: string
+                      description: Product name.
+                    slug:
+                      type: string
+                      description: URL slug.
+                    tagline:
+                      type:
+                        - string
+                        - 'null'
+                      description: Short product tagline.
+                    votesCount:
+                      type: integer
+                      description: Total upvotes.
+                    commentsCount:
+                      type: integer
+                      description: Total comments.
+                    dailyRank:
+                      type:
+                        - string
+                        - 'null'
+                      description: 'Rank for the day, e.g. "1".'
+                    createdAt:
+                      type:
+                        - string
+                        - 'null'
+                      description: ISO timestamp when posted.
+                    featuredAt:
+                      type:
+                        - string
+                        - 'null'
+                      description: ISO timestamp when featured.
+                    thumbnailUrl:
+                      type:
+                        - string
+                        - 'null'
+                      description: Product thumbnail image URL.
+                    topics:
+                      type: array
+                      items:
+                        type: string
+                      description: Topic names.
+                    productSlug:
+                      type: string
+                      description: Slug for the product page.
+  /internal/getPost:
+    get:
+      operationId: getPost
+      summary: 'Product details — name, description, votes, makers, categories'
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ph0003
+          tool_version: 1
+          verified: true
+          signals:
+            - page_global_data
+        adapter:
+          name: producthunt
+          operation: getPost
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Product slug — use productSlug from getPosts/getToday, or slug from searchProducts (e.g. "novavoice").'
+          example: novavoice
+      responses:
+        '200':
+          description: Full product details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, slug, votesCount, commentsCount]
+                properties:
+                  id:
+                    type: string
+                    description: Product ID.
+                  name:
+                    type: string
+                    description: Product name.
+                  slug:
+                    type: string
+                    description: URL slug.
+                  tagline:
+                    type:
+                      - string
+                      - 'null'
+                    description: Short tagline.
+                  description:
+                    type:
+                      - string
+                      - 'null'
+                    description: Full product description.
+                  websiteUrl:
+                    type:
+                      - string
+                      - 'null'
+                    description: Product website URL.
+                  votesCount:
+                    type: integer
+                    description: Total upvotes.
+                  commentsCount:
+                    type: integer
+                    description: Total comments.
+                  dailyRank:
+                    type:
+                      - string
+                      - 'null'
+                    description: Daily rank.
+                  createdAt:
+                    type:
+                      - string
+                      - 'null'
+                    description: ISO timestamp.
+                  featuredAt:
+                    type:
+                      - string
+                      - 'null'
+                    description: ISO timestamp when featured.
+                  followersCount:
+                    type: integer
+                    description: Number of followers.
+                  reviewsCount:
+                    type: integer
+                    description: Number of reviews.
+                  reviewsRating:
+                    type: number
+                    description: Average review rating.
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                    description: Product category names.
+                  makers:
+                    type: array
+                    description: Product makers/team.
+                    items:
+                      type: object
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                        username:
+                          type:
+                            - string
+                            - 'null'
+                        headline:
+                          type:
+                            - string
+                            - 'null'
+                  thumbnailUrl:
+                    type:
+                      - string
+                      - 'null'
+                    description: Thumbnail image URL.
+                  logoUrl:
+                    type:
+                      - string
+                      - 'null'
+                    description: Product logo URL.
+  /internal/searchProducts:
+    get:
+      operationId: searchProducts
+      summary: 'Search products by keyword — name, tagline, rating'
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ph0004
+          tool_version: 1
+          verified: true
+          signals:
+            - page_global_data
+        extraction:
+          type: page_global_data
+          page_url: https://www.producthunt.com/search?q={query}
+          expression: |
+            (() => {
+              const client = window.__APOLLO_CLIENT__;
+              if (!client) return [];
+              const cache = client.cache.extract();
+              const resolveRef = (r) => (r && typeof r === 'object' && '__ref' in r) ? (cache[r.__ref] ?? null) : r;
+              const root = cache.ROOT_QUERY;
+              if (!root) return [];
+              const key = Object.keys(root).find(k => k.startsWith('productSearch('));
+              if (!key) return [];
+              const result = root[key];
+              if (!result || !result.edges) return [];
+              return result.edges.map(edge => {
+                const p = resolveRef(edge.node);
+                if (!p) return null;
+                return {
+                  id: p.id, name: p.name, slug: p.slug,
+                  tagline: p.tagline ?? null,
+                  reviewsRating: p.reviewsRating ?? 0,
+                  reviewsCount: p.reviewsCount ?? 0,
+                  logoUrl: p.logoUuid ? ('https://ph-files.imgix.net/' + p.logoUuid + '?auto=format&fit=crop&h=150&w=150') : null,
+                };
+              }).filter(Boolean);
+            })()
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search keyword.
+          example: ai
+      responses:
+        '200':
+          description: Array of matching products.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, slug]
+                  properties:
+                    id:
+                      type: string
+                      description: Product ID.
+                    name:
+                      type: string
+                      description: Product name.
+                    slug:
+                      type: string
+                      description: URL slug.
+                    tagline:
+                      type:
+                        - string
+                        - 'null'
+                      description: Product tagline.
+                    reviewsRating:
+                      type: number
+                      description: Average review rating.
+                    reviewsCount:
+                      type: integer
+                      description: Number of reviews.
+                    logoUrl:
+                      type:
+                        - string
+                        - 'null'
+                      description: Product logo URL.

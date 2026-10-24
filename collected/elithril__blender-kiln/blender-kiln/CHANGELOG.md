@@ -1,0 +1,926 @@
+# Changelog
+
+All notable changes to blender-kiln are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+
+- **The showcase chest is rebuilt** by its own script, `examples/animation/chest.py`: planks, a
+  barrel lid of staves, iron corners, bands, rivets, handles, lock and hasp, a heap of gold inside,
+  textured with two Poly Haven CC0 scans it downloads at run time. Three bones (body, lid, hasp),
+  every sign measured, an exact 4 s loop. The export now fails loudly if a texture is lost on the
+  way, which a relative image path did silently. `props.py` keeps the lamp.
+- **AI generation is optional, and Hunyuan3D is no longer proposed first.** The default
+  stays Claude scripting Blender — no AI model, nothing to install, and a missing 3D
+  backend is no longer reported as a gap. When the user picks AI, kiln proposes the
+  free `microsoft/TRELLIS.2` Space (MIT), then `trellis-community/TRELLIS` (MIT), then
+  `stabilityai/TripoSR` (MIT; RUNTIME_ERROR on 2026-10-09). Hunyuan3D — Space, local or
+  MCP native — stays available on request only: its `LICENSE` does not apply in the EU,
+  the UK or South Korea, and kiln quotes that and asks before any call. "MCP native
+  (recommended to start)" is gone: it only reaches Hunyuan3D and paid Rodin. Default
+  Space, `/kiln models`, the batch manifest (`method: ai`; `hunyuan3d` still read) and
+  the manifests' descriptions follow.
+- **The TRELLIS.2 Space removes backgrounds with RMBG-2.0 (CC BY-NC 4.0)** unless the
+  image already has an alpha channel — read in its `app.py`. The reference says to send
+  a cut-out, or to use the TRELLIS Space, whose `rembg`/U²-Net chain is MIT/Apache-2.0.
+
+## [2.2.0] — 2026-10-07
+
+### Added — `/kiln animate`
+
+- **Animate a rigged asset without the full pipeline**: `/kiln animate SK_Cat.glb walk, idle`
+  or `/kiln animate dragon.glb "flaps its wings"`. It runs 2.1's PHASE 5d on its own:
+  inspects the rig and folds bone-parented parts into the skin, stops on a rig too
+  coarse to bend where asked and offers PHASE 5c, offers the asset's own clips first,
+  then routes by subject — `tools/quadruped.py` for a quadruped's idle and walk, UniMate
+  for bipeds and winged creatures (status checked, non-commercial weights stated, label
+  review kept), keyed parts for articulated objects — and shows every kept clip before
+  exporting.
+
+## [2.1.0] — 2026-10-07
+
+kiln now **animates** what it rigs — routed by subject, because no single method held up
+across all of them. Every route below was measured on real rigs, and every scripted
+cycle went through review until it read as a real animal or object.
+
+### Added — PHASE 5d ANIMATE, routed by subject
+
+- **`references/animation.md`**: the routing table, the measurements behind it, and
+  seven rules for scripted animation, each a cycle that looked wrong until measured —
+  drive a bone in its own rest frame (a cat's `Hips` lies along the body: a "vertical" bob
+  moved it 1.8 cm forward and 1 mm up), solve the IK pole angle from the rest pose (a
+  guessed −90° turned the elbows forward), keep legs ≤ 95% of their length (the rejected
+  walk peaked at 101%), measure a rotation's sign before using it, loop exactly, judge
+  motion in motion and in numbers, hold paws level.
+- **`tools/quadruped.py`**: scripted idle and lateral-sequence walk for a quadruped,
+  IK-planted, baked to FK. It measures the clip before writing it, shortens the stride
+  until the legs stay bent, and reports the root speed the planted paws share (0.106 m/s
+  on the showcase cat, the four paws in exact step).
+- **UniMate**, text-to-motion for any skeleton ([Friedrich-M/UniMate](https://github.com/Friedrich-M/UniMate)),
+  for bipeds and winged creatures. **`tools/unimate.py`** installs it at the commit and
+  checkpoint kiln measured (`status`, `setup`, `setup --update`, `drift`, `animate`),
+  3.2 GB; `tools/unimate.patch` (73 lines) runs it on Apple Silicon and on Blender 5 —
+  upstream supports NVIDIA only. 18 s per clip on an M4 Pro. Its checkpoints are
+  **CC BY-NC 4.0**, said wherever the route is offered.
+- **`tools/motion_loop.py`**: generated clip → seamless loop, keeping the sample that loops
+  best. Seams measured against the local frame step: 2.1-9.7x raw, 0.5-1.2x looped
+  (12 clips). It refuses still stretches and requires the same direction through the
+  seam — a swing matched its mirror image on the way back until it did.
+- **`tools/bind_rigid_parts.py`**: bone-parented parts (a dragon's eyes) folded into the
+  skin at rest pose, so skin-only pipelines keep them — read posed, the eyes landed
+  1.5 m off the face. It also reports a quadruped posture, right on 6 rigs.
+- **The animation showcase** in the README: a villager walking and jumping and a dragon
+  flapping (UniMate, the looped sample kept out of 4, approved on review), a cat walking
+  and idling (`quadruped.py`), a desk lamp and a chest modelled, rigged and keyed by
+  script. `examples/animation/showcase.sh` rebuilds all seven, at 720 px (1.6 MB
+  together).
+- **`.github/workflows/unimate-drift.yml`**: weekly, checks kiln's patch still applies to
+  UniMate's upstream HEAD — the project changed its pipeline, checkpoints and licence
+  within days of kiln first measuring it.
+
+### Measured — what did not make it
+
+- **UniMate on quadrupeds: unusable for walking** on a cat, a Shiba, a horse and the
+  model author's own Go2 example; same result with upstream's adaptive solver, so the
+  fixed-step shortcut was ruled out. `unimate.py` recognises a quadruped and refuses it
+  unless `--force`.
+- **Prompt wording**: "walks in place" 8 of 8, "walks forward" 0 of 8 — it slides with
+  the feet still.
+- **MoCapAnything V2** (video → motion, MIT): excellent on rigs from its own training set,
+  unusable on two from outside it. Not shipped.
+- **Scripted trot, jump, sit and attack** for quadrupeds: rejected on review. Quadrupeds
+  keep their own clips or hand keys for those.
+
+### Changed
+
+- **Rule 10's weld keeps the shading.** A plain merge re-smoothed a faceted low-poly cat
+  (26.7% → 94.5% of face corners bent > 5°), and merging before applying an object scale
+  of 100 deleted 108 of 928 faces. The weld now applies transforms first and gives each
+  corner its old normal back: unchanged to 0.05°, through `normals_make_consistent` and
+  a glTF round trip (`references/validation-checklist.md` § Merge by Distance).
+- **Rigs are weighted on the welded mesh** (rule 26, PHASE 5c). Weighted with its split
+  edges, the same cat tore 12.5 cm open at the first pose — 2,798 vertex pairs pulled
+  apart. `references/characters.md` § Animation-ready skeleton: joints at the bends,
+  Mixamo-style names (UniMate's offline labeller read 24 of 26 directly), a measured pose
+  test.
+- **The gallery's CLEANUP follows the new weld.** Measured on all 15 builders first: their
+  shading is unchanged either way (no split edges), and the regenerated gallery matches
+  `docs/gallery.md` row for row — 21,879 tris, 1456.2 kB raw → 132.7 kB.
+- `verify_blender.py` gains four checks, all on synthetic rigs built in the check: the weld
+  (a split tube tears 1.6 cm, 0 welded; shading kept), the quadruped walk, rigid-part
+  folding with the posture test, and loop extraction (a 13-frame swing cut at 48 frames loops back to
+  exactly 39).
+
+## [2.0.2] — 2026-10-02
+
+### Changed — an install downloads 0.7 MB of skill, not 46 MB of repository
+
+- **The plugin now lives in `plugin/`**, and the marketplace's source points there
+  (`"source": "./plugin"`, documented). Measured in a clean Claude Code profile, a 2.0.1
+  install held the whole repository twice — a 30 MB marketplace clone and a 16 MB plugin
+  copy, 11 MB of it benchmark results — for a skill that needs `SKILL.md`, `references/`
+  and `tools/`.
+- **The bench's published results moved to the `bench-results` branch**, history kept
+  (`git subtree split`); `docs/benchmarks.md` links there. Locally, `bench/results/` is a
+  worktree of that branch.
+- **Standalone clones keep working**: the repository root links `SKILL.md`, `references`
+  and `tools` to `plugin/`. On Windows, git needs `core.symlinks`, or install as a plugin.
+- **For contributors**: the checks run as `python3 plugin/tools/verify_docs.py` and so on;
+  `verify_docs.py` resolves the README and repository files against the repository and
+  the skill's docs against the plugin, and checks the source folder holds a `SKILL.md`
+  and a `plugin.json`. The bench copies `plugin/` into each sandbox.
+
+## [2.0.1] — 2026-10-02
+
+### Changed
+
+- **The plugin's description says what 2.0 does.** The manifests still described 1.x —
+  "from text brief to optimized GLB", Hunyuan3D only — in the `/plugin` menu. They now
+  name the photo method, the CC0 scans, the local TRELLIS.2 templates and both MCP
+  servers. No change to the skill.
+
+## [2.0.0] — 2026-10-02
+
+kiln now rebuilds an object **from a photo** — read in crops, textured from CC0 scans,
+measured against the photo and checked joint by joint — and runs on both Blender MCP
+servers, the Blender Foundation's official one included. Every claim below was measured by
+a new quality bench that scores each rebuild against the real 3D asset it was photographed
+from: shape **0.830 → 0.897** (lantern), **0.854 → 0.950** (ammo box), **0.445 → 0.750**
+(gothic chair); text briefs ship **32.9 MB → 0.96 MB**. The method, what each fix broke and
+how the bench was kept honest: [`docs/benchmarks.md`](docs/benchmarks.md).
+
+### Breaking
+
+- **`_final.glb` is compressed by default.** The OPTIMIZE phase now runs in auto mode
+  with the glTF preset: Draco geometry and WebP textures (`KHR_draco_mesh_compression`,
+  `EXT_texture_webp`). A loader needs a Draco decoder and WebP support — three.js through
+  `DRACOLoader`; check your engine's glTF importer. `_final.glb` is written only after
+  this phase.
+- **The triangle range is a guide, not a cap.** Up to twice a tier's top is kept and
+  reported, with where the triangles go; a reduction is proposed only past that (batch
+  mode decimates to the tier's top, not its midpoint). The same tier ships heavier assets
+  than 1.x did when the detail is visible.
+- **Rule 6 now covers thin parts**: wires, bails and loops are rebuilt as curves, never
+  decimated — a generated mesh with thin parts is no longer simplified as a whole.
+
+### Upgrading from 1.x
+
+- **Need uncompressed files?** `_original.glb` is still written next to `_final.glb` —
+  ship it if your loader cannot decode Draco or WebP — or run in guided mode, where the
+  optimization is proposed and can be declined.
+- **Want a tighter budget?** Give the triangle count in the brief: a reduction to it is
+  proposed, with before/after (rule 6 asks before any decimation).
+- **Nothing to migrate** in commands, the brief format, the output layout or the log —
+  `/kiln`, `/kiln setup`, `/kiln cleanup` and the rest are unchanged.
+- **Optional**: Blender 5.1+ to use the official Lab MCP; a free local TRELLIS.2 setup on
+  Apple Silicon (24 GB) for 3D templates — see `references/ai-generation.md`.
+
+### Added — a quality bench, and a baseline to hold every change against
+
+- **Nothing had measured an end-to-end `/kiln` session.** `bench/` runs the skill
+  headless on six fixed briefs, one per pipeline path, and measures each shipped
+  GLB after re-importing it — topology, grounding, surviving textures, rig
+  structure, and a deformation probe that sees a rig which validates yet produces
+  mush. Baseline on 1.1.2: `bench/results/baseline-2026-09-29.md`.
+
+### Changed — concept art no longer depends on Pollinations
+
+- **Pollinations answers HTTP 402 `Payment-Required` after one image** (measured
+  2026-09-29), and the session then painted over its watermark. The default is now
+  the `black-forest-labs/FLUX.1-schnell` HF Space: Apache-2.0, same `gradio_client`
+  venv, 5.6 s for a 1024×1024 image, no watermark. `references/ai-generation.md`
+  gains the concept-art section `SKILL.md` had been pointing at all along.
+- **Rule 5** now says a 402 means switch source, and forbids removing a watermark.
+
+### Added — the official Blender Lab MCP, and PolyHaven without an integration
+
+- **Kiln runs on the Blender Foundation's MCP** — the server behind Claude's Blender
+  connector. Measured: 1.1.2 shipped the same 7 GLBs on it for 10% less. `SKILL.md`
+  now maps its tools one by one, gives the setup facts that each cost a failed start
+  (the add-on's `5.1.0` floor, online access, a package name that collides with
+  ahujasid's on PyPI), and says *when* to capture on it — its sessions took one
+  screenshot each.
+- **PolyHaven's public API**, for a server with no PolyHaven tools: endpoints
+  verified live, and what its Terms of Service require that the sessions had not
+  done — a unique User-Agent and a visible credit.
+- **The Khronos validator after every export**, through the already-required
+  `gltf-transform validate`: exit 1 on a seeded broken GLB, exit 0 on all 16 bench
+  GLBs. It checks the format, not the mesh.
+
+### Added — measuring a model against its reference image
+
+- **`references/reference-fidelity.md`**, for scripted modeling from an image: a detail
+  inventory, the silhouette measured from the pixels, a surface-to-surface attachment
+  check, materials sampled from the image, and two review rounds at most.
+- **`tools/fidelity_check.py`** renders the model front-on as a silhouette and under a
+  Poly Haven studio HDRI, and prints the gaps against the reference, largest first:
+  silhouette IoU per height band, widths, and per band luminance, saturation, warmth,
+  highlights and texture detail. It reproduced the bench's hand analysis (IoU 0.713
+  and 0.772 against 0.717 and 0.773). Judging by eye, sessions over-corrected twice —
+  too bright and blotchy, then grey and flat at half the reference's saturation.
+- **Texture and wire techniques read from an image-to-code tool's own output**: wires
+  traced from the pixels (a bail within 0.7 mm of its hand-measured points), a three-tone
+  palette per region, independent colour / roughness / relief fields with grime along a
+  turned part's direction, relief baked to a normal map (glTF has no bump — measured to
+  export as `normalTexture`), and a frosted-glass recipe. `fidelity_check.py` now counts
+  triangles against `--max-tris` and refuses a model with unloaded textures, which had
+  rendered black and skewed a measure.
+- **What one photo cannot say is settled before modeling**: the real size (asked, or the
+  usual size stated as an assumption — five reconstructions of one lantern came out
+  23–52 % too tall), more views for an asset whose back will be seen, and the camera's
+  elevation read on a rim's ellipse. `fidelity_check.py` takes `--view` and `--elevation`.
+  Scored from five sides against the real Poly Haven asset, the version that best fitted
+  the ~15° photo from the front was the *worst* against the object: it had copied the
+  photo's perspective into the geometry, its base 30 % too tall.
+- **What the lantern loop got wrong, corrected before other objects** (commit after 7 trials):
+  the review no longer chases the photo score — the real object scores ~0.80 against its own
+  photo, and the version that reached 0.898 was the worst against it; shape gaps are local
+  (a band's width off by more than 8 %), and wire bands are judged by width, not IoU. Detail
+  comes from fine features, never relief amplitude (a session made its lantern read as
+  lumpy cast iron). Traced wires become smooth splines, not polylines (a bail came out
+  kinked). The inventory is ticked line by line at the final review (a pentagon loop turned
+  into a teardrop no number flagged). The procedure scales with the tier — the lantern's
+  cost had gone from $1.90 to $3.52. The float bake and its sRGB conversion are one rule.
+- **3/4 photos and openwork objects**, found by testing on a crate and a chair: the review
+  camera now takes `--azimuth` as well as `--elevation`, framing by projecting the bounding
+  box (a real crate against its own 3/4 preview: 0.573 level, 0.925 at 50°/20°); and
+  openwork — a chair from the side, 0.12–0.16 at every orientation — is judged on
+  proportions and by eye.
+- **`tools/test_fidelity_check.py`** seeds the review tool, now 27/27, in the Blender CI. Its
+  first run caught the views framed by height only: anything wider than tall was clipped.
+- **TRELLIS.2 run locally and measured** (`references/ai-generation.md`): on an M4 Pro with
+  24 GB, 5–7 min a model, 19.5–22.5 GB peak, 31 GB of weights; the best shape the bench has
+  measured (0.952 from five sides, scripted: 0.861) but always 1 m tall, 160–190k triangles
+  and one material. Five install fixes the project does not make, and an MIT-only run: the
+  non-commercial RMBG-2.0 swapped for BiRefNet, which needed a float32 cast the lantern's
+  cut-out photo never exercised. Finished by kiln it took the real asset's colour — and lost
+  its thin parts to a 97 % decimation the score did not see: wires are now rebuilt, not
+  decimated (a rule in SKILL.md's CLEANUP, where every session passes — the run had grepped
+  the reference, not read it), and open edges are counted after.
+- **Scanned CC0 texture sets before procedural noise** (`reference-fidelity.md` § 4). Two
+  objects, one verdict: the geometry tools work, the surfaces do not — the crate's rust
+  came out a soft orange gradient along its edges, the lantern's patina even and clean.
+  Noise makes a smear where a scan has flakes, pits, runs and chips. The skill now starts
+  from a Poly Haven texture set of the material family (CC0, no key; tags and thumbnails
+  to choose by eye against the photo's crop), tints it to the photo's palette, wears it
+  with a second set masked by the form, and bakes it to the UVs. `fetch_texture_set` and
+  `scanned_layer` were run on Blender 5.2.2 against the live API.
+- **Grain is information, not a gap.** Its lantern-calibrated threshold flagged the real
+  crate against its own photo (22–28 %); it stays in the JSON only.
+- **Every generation starts from nothing: no figure from a measured object in what a
+  session reads.** The references and the review tool's own messages quoted the bench
+  lantern's real values as illustrations — its height, its brass's base colour (0.30), its
+  metal share, its profile errors, what each version did. Each one a session could find
+  became a value it aimed at: the metal share (48 %), the height (0.294 m), and the base
+  colour — v11 and v13 logged "median 0.27–0.30 (the doc's real brass is 0.30)" and came
+  out light, even and clean, where the real brass's look comes from colour, roughness and
+  metal varying TOGETHER. `reference-fidelity.md` is rewritten as a method (403 → 330
+  lines, every snippet kept), the tools' docstrings, comments and gap messages keep their
+  thresholds without the figures behind them, and the base colour comes from the photo's
+  palette, with 0.15 as a floor only. The calibration record stays here and in the bench.
+- **v12's lessons, kept as limits rather than more rules.** Told a joining part "sits on a
+  shaped foot", v12 flared its tubes into flat tongues: a part now enters with its section
+  unchanged, a foot only where the photo clearly shows one, judged against the photo's
+  crop. It tackled six material problems in one round and its surface regressed (grain
+  28 → 24 % of the photo's — not the WebP step, measured 28 → 26 %): one material problem
+  per round now, and ageing added one layer at a time. The too-clean grain line is listed
+  as information, not ranked as a gap.
+- **A surface too clean for its photo is reported; widths come from the template; glass
+  takes the photo's tint.** v11 fixed v10's joints and metals and overshot: one clean
+  bronze read new (grain 20 % of the photo's on the tank; the real object 74 %, the
+  image-to-code lantern 79 %, v10 57 %). `fidelity_check.py` now measures a band's grain —
+  fine variation deep inside solid areas, over its brightness — and reports it under 28 %
+  of the photo's (one truth, narrow margin: v10 sits at 31 %). Age is a layer inside the
+  material: AO-darkened cavities, worn edges, pits and dents. v11 also took widths from the
+  photo, whose perspective narrows (−6 %); the template now gives widths and the parts'
+  positions too. And the glass: clear in v8–v11 against a near-black photo — the
+  reference's own inventory example said "clear glass".
+- **Joints are rendered to be looked at, and patina stays metal** — what v10 got wrong
+  where the numbers said it was fine. Its air tubes ended in a flat cut resting on the
+  tank's slope, touching at one point and lifting 14.6 mm across their end, while the
+  inventory read "inserted"; no distance can judge it (the real tubes lift 8.6 mm under a
+  sheet-metal foot), so `fidelity_check.py` renders every end of a long part that touches
+  another — the two parts alone, flat grey, two views, `review/joints/` — and the rule is
+  that a part joining another enters it or sits on a shaped foot. Its tank read grey
+  pewter: most of the brass was painted as non-metal patina (metallic 0.20–0.38 on
+  average, the real brass 0.63), and a non-metal reflects white. Tarnish now stays metal,
+  darker and rougher; only crusts are non-metal; the tool warns when a metal is mostly
+  painted (calibrated on one truth, said so). And one material per PHYSICAL material —
+  the reference had said the opposite ("never one material for every metal part"), and
+  v10's five metals read as five alloys. Round parts keep 16+ sides (its tubes, 10–11,
+  read as bars); grime streaks modulate, they do not stripe (they read as wood grain).
+- **A metallic mask in scattered hard islands is reported.** Lantern v9's surface came out
+  as copper islands on a dark patina — the skill's dark-metal text had quoted the real brass
+  as "48 % metal", and the session thresholded a noise to reach it. The number is gone; the
+  rule is one worn region following the form, soft-edged. `fidelity_check.py` flags a mask
+  both scattered (largest island < 50 % of the metal) and hard (< 60 % in-between texels):
+  v9 on 9 of 9 materials, none of the bench's truths, v8, img2threejs or TRELLIS.2. A mean
+  texel jump was tried first and dropped — it counts edges, not their hardness.
+- **`tools/template_profile.py` reads proportions off a 3D template** — a generated mesh of
+  the photo, a scan — to model from, never to ship. On the bench's lantern the TRELLIS.2
+  mesh is within 0.6 mm of the real profile (median; 1.6 mm at worst), the best photo-read
+  reconstruction 1.1 mm and 9.7 mm at worst, at the step a 15° camera hides. Seeded by
+  `tools/test_template_profile.py` (4/4, in the Blender CI), whose first run caught the
+  axis pulled off-centre by a tube reaching the floor. Its first example command carried
+  the bench lantern's real height (0.294 m) — the answer key — and a session copied it as
+  its "assumption": the example now names the argument, and the reference says where the
+  real height comes from.
+- **The triangle range is a guide, not a cap.** The review tool ranked any overshoot as
+  its first gap, and sessions spent their review cutting round parts (a lantern at 9.5k
+  for a 5k top read "90 % over" as its main defect). Up to twice the tier's top is now
+  reported last and kept, with where the triangles go; a reduction is proposed past
+  twice the top — batch mode decimates to the top there, not to the midpoint.
+- **Dark metal is reported, and luminance is no longer something to match.** The bench's
+  final lantern read near-black: 100 % metal at a base colour of 0.07–0.15, 23 % darker than
+  the real object under the same light — while matching the photo's luminance to 0.003,
+  because the photo's own light was darker. `fidelity_check.py` now reads the model's
+  materials and reports metal below 0.15 (the real aged brass: 0.30, 46 % metallic, its rust
+  painted as non-metal); luminance and highlight gaps are labelled light-dependent.
+- **A float colour bake shipped black.** Measured on Blender 5.2.2 with a minimal repro:
+  the glTF exporter writes a linear float base-colour image into its PNG without the sRGB
+  transfer (linear 0.2 → byte 51, not 124). A lantern reviewed at saturation 0.30 shipped
+  at 0.12. `to_srgb_byte()` converts first (byte 124, 0.202 back); the last review measure
+  must now be of `_final.glb`, and `fidelity_check.py` warns when given a `.blend`. The
+  float bake itself came from this release's own advice.
+- **The camera's elevation is read, then fixed — never picked by the score.** A session
+  that chose among 10 / 15 / 20° the angle its own model fitted best kept 20°, and shipped a
+  base 27 % flatter than the real one. Reviews are now capped at three measures, correct
+  half-way toward a target (saturation had jumped 0.17 → 0.38 for 0.33), and keep every
+  working file in the asset folder — the same session had written into `/tmp`.
+- **Luminance and highlights depend on the light.** The real asset, measured against its
+  own preview under the tool's HDRI, reads luminance +0.05 and highlights 2.5 % for
+  1.5 %; saturation held (0.33 for 0.32). Those two are now alarms, not targets.
+- **The skill replies in the language of the request.** Two sessions had answered in French
+  to an English brief.
+
+### Changed — the skill now fires on files people bring, not only on assets they order
+
+- **The frontmatter `description` decides whether kiln exists for a user**, and it
+  only described producing an asset. Measured with `bench/trigger.py` on 12 prompts
+  written as users write: the old one fired on **6 of 8** that should trigger it —
+  it missed "shrink this 40 MB GLB" and "convert to USDZ", both of which kiln does
+  — and on none of the 4 that should not. On 6 held-out prompts, written before
+  the new description was drafted, it scored 3 of 4 (it missed "generate LODs").
+  The new one: **12 of 12, 0 false positives in 6**. One run per prompt.
+
+### Changed — what a Space call spends, and whose
+
+- **The free cloud path is one or two generations a day.** ZeroGPU gives 2 minutes
+  without an account and 3.5 with a free one; one TRELLIS.2 run asks 60–120 s. A call
+  reserves the Space's declared duration (90 s for a 5.6 s FLUX image), and the quota
+  resets 24 h after the first call, not at midnight — measured: still refused the
+  next morning. A spent quota means no concept art either; the reference now lists
+  the free fallbacks, a PolyHaven CC0 preview among them.
+- **A Space call never uses a token silently.** `gradio_client` sends the saved
+  Hugging Face token by default (`token=None`; measured). The skill announces whose
+  account pays before the first call, offers `token=False`, and never reads, prints
+  or writes a token.
+- **TRELLIS.2 is documented as a candidate, not the default**: its Space API is
+  recorded as read live — `/extract_glb` rejects a target under 100,000 triangles —
+  but no generation has completed on it yet. The local Apple Silicon port is listed
+  with its licences, including a non-commercial background remover.
+
+### Fixed — what the baseline found
+
+- **Auto mode stopped before OPTIMIZE** on 3 of 6 briefs and named the result
+  `_final.glb` — a 16 MB file for a 724-triangle chair. Auto mode now applies the
+  default preset for glTF, and `_final.glb` is written only after the phase.
+- **Rule 2** measured at 2–4 screenshots for 6–17 edits; it is now anchored to
+  phases, with two opposite angles after texturing — a UV defect on one crate
+  corner passed every count.
+- **Rule 6**: the untouched factory Cube is removed and logged; anything else is
+  hidden, never deleted. Runs had done both.
+- **`gradio_client` 2.7.1 returns the Hunyuan3D mesh as a dict**; a `gradio_path()`
+  helper unwraps both shapes. The Space's textured endpoint fails server-side
+  today (`NameError`), and the reference says so.
+- **Rigs, measured on Blender 5.2.2**: the glTF exporter re-parents a deform bone
+  under a control bone to its nearest deforming ancestor, and binds unweighted
+  vertices to a synthetic `neutral_bone` — so validate before export, not after.
+- **Batch durations** are measured with timestamps, never estimated.
+- **The manifold check never ran**: it was missing from the cleanup's execution
+  order, and a lantern shipped 84 edges shared by 3–4 faces. It is step 5 now, and
+  separates fused edges (always a defect) from open ones (fine on a leaf).
+- **Web textures are capped at 1K**, as `uv-materials.md` already said. An earlier
+  fix in this release had set 2K for the balanced tier, and a chair doubled.
+- **The README's key-rules list** was a Markdown ordered list, which renumbers
+  itself: twelve of thirteen entries named the wrong rule. It now writes
+  `**Rule N**`, and `verify_docs.py` checks each entry against its rule and rejects
+  an ordered list in that section.
+- **The tool surface** now covers all 36 tools of `blender-mcp` 2.0.0, with what
+  each costs. It had cited rule 22 for integration status and rule 23 for
+  `get_object_info` — both one off after a renumbering. `verify_docs.py` now
+  checks tool-table rows against the rule they cite.
+
+### Fixed — a headless Blender crash exited 0, so a failed export read as a success
+
+- **Blender exits 0 when a `--python` script raises**, unless it is given
+  `--python-exit-code 1`. An explicit `sys.exit(1)` does propagate; an uncaught
+  exception does not. Measured on 5.0.1: the same raising script exits 0 without
+  the flag and 1 with it.
+- **Rule 21's fallback was the exposed path.** When an MCP export times out the
+  skill runs a headless export (`references/export-targets.md`), and a failure
+  there came back as success. The command now carries the flag, and the reference
+  says to check the exit code, then the file.
+- **The Blender CI step had the same hole**: a crash outside `verify_blender.py`'s
+  `try` blocks would have passed green. Run with the flag, it still reports 9/9 —
+  nothing had been hiding. The flag is also on the gallery script, the usage
+  docstrings and CONTRIBUTING.
+- **New `exitcode` check in `verify_docs.py`**: every headless Blender command in a
+  code fence, script or workflow must fail loud. Prose naming the command is left
+  alone. Three cases in `test_verify_docs.py` — **21/21**.
+
+## [1.1.2] — 2026-08-26
+
+### Fixed — the README stated two different Blender versions, and neither was measured
+
+- **The badge said `Blender 4.x+` while the Reproduce section said `Needs Blender
+  5.x`.** Both numbers were written rather than measured: nothing in this repository
+  has ever run on 4.x. The real floor is **4.4**, for a specific reason — the
+  animation code reaches F-curves through `action.layers[].strips[].channelbag()`,
+  and layered actions arrived in 4.4. Everything here is measured on 5.0 locally and
+  5.2.1 LTS in CI. 4.4–4.5 satisfy the API but are untested, so the README now calls
+  them unverified rather than supported, which is the honest word.
+- **The check written to catch this took three attempts, and the failures are worth
+  recording.** Matching every `Blender N.N` flagged history: "Since Blender 4.0+,
+  bone layers were replaced" demands nothing of the reader. Blacklisting history
+  words then silenced the check *completely*, because the genuine requirement lines
+  say "verified" and "measured on" too — it passed by finding nothing at all, which
+  is the worse failure of the two. It now whitelists requirement phrasings and fails
+  when it finds no requirement, because a check that cannot fail proves nothing.
+- **The test harness could only ever assert that a check fires.** Fourteen cases, all
+  seeded regressions, and nothing asserting a check stays *quiet* — yet five false
+  positives have shipped in these checkers, and a check people learn to ignore is
+  worse than no check. `expect=None` now demands silence on correct input, covering
+  the three this repository actually produced: a history note, an API-availability
+  qualifier, and `uv pip install` tripping the bare-pip rule.
+- **The two plugin manifests could disagree about the version** and nothing noticed.
+  `plugin.json` and `marketplace.json` both carry it, a release touches both by hand,
+  and a mismatch would install the plugin under the wrong number while every check
+  passed. Now verified.
+
+## [1.1.1] — 2026-08-26
+
+### Fixed — the HuggingFace path had gone stale
+
+- **The default HF Space was paused.** `Jbowyer/Hunyuan3D-2.1`, a community
+  duplicate, measures `stage: PAUSED` as of 2026-08-26 — and a paused Space answers
+  HTTP 200, so it looks alive. The default is now the vendor's own
+  `tencent/Hunyuan3D-2` (RUNNING, 3,370 likes), and the reference carries the
+  one-line check for the runtime stage. A duplicate depends on one person
+  continuing to pay for a GPU, which is exactly how the old default died.
+- **The pinned client version was a major release behind**, and the documented API
+  flow did not match the Space. Connected live with `gradio_client` 2.6.1 and read
+  the signature: `tencent/Hunyuan3D-2` exposes 12 named endpoints, of which
+  `/shape_generation` (4 returns) and `/generation_all` (5 returns) matter, both
+  taking the same 13 parameters. The documented two-step flow named an
+  `/on_export_click` endpoint that is not among them. The reference now carries the
+  measured signature and the call that prints it when something changes.
+- **`randomize_seed` defaults to True** on both endpoints, which makes runs
+  non-reproducible — worth knowing before comparing outputs or re-running a batch.
+  Now documented.
+- **A bare `pip install` had survived the whole audit in the README**, because
+  `verify_docs.py` exempted anything in backticks — and a prescription in markdown
+  *is* written in backticks. The exemption is gone, only genuinely correct forms
+  (a venv path, `uv pip`) are excused, and the regression suite covers the case:
+  **13/13**. This is the mirror of the four false positives found earlier: same
+  checker, opposite failure.
+
+
+## [1.1.0] — 2026-08-26
+
+### Fixed — an API on its way out, caught by the CI's first run
+
+- **`Material.use_nodes` is scheduled for removal in Blender 6.0**, and the docs and
+  gallery scripts wrote it in sixteen places. It is already a no-op: a new material
+  in 5.x arrives with a `node_tree`, a Principled BSDF and a Material Output
+  already in place, and `node_tree` stays non-None even with `use_nodes = False`.
+  So every write was doing nothing today and would break in 6.0. Writes removed,
+  reads switched to `node_tree`. The gallery reproduces byte-identically —
+  21,879 tris, 1456.2 kB → 132.7 kB — so the change is inert.
+- **`verify_blender.py` now fails on any `DeprecationWarning`** that the docs or the
+  gallery reach. This one appeared as a single buried line in the very first CI run,
+  where it would have sat until 6.0 broke the documentation. A warning nobody fails
+  on is a warning nobody reads.
+
+### Added — the Blender half of the CI
+
+- **`tools/verify_blender.py`** plus `.github/workflows/blender.yml`, weekly and on
+  demand: eight checks that need Blender running. They cover the findings text
+  analysis cannot reach — `Action.fcurves` removed in 4.4+ and the channelbag walk
+  that replaced it, EEVEE attribute removals and the `BLENDER_EEVEE_NEXT` rename,
+  Principled socket names, Rigify's deform-bone counts against the tiers PHASE 5c
+  routes on, the IK default that makes FK controls silent, geometry nodes needing
+  the modifier applied, and USDZ exporting natively into a conforming archive.
+- Each check reports when a finding has gone *stale* as well as when it breaks: if
+  `Action.fcurves` returns, or a Rigify rig stops defaulting to IK, the run says so
+  rather than passing quietly on advice that is no longer needed.
+- Writing it produced four more false positives — a bare `inputs["..."]` regex
+  matched Normal Map, Mix and Material Output sockets, so `Color`, `Fac`, `Shader`
+  and `Surface` were reported as missing Principled inputs. Narrowed to the
+  Principled node. That is the fourth time this session the same mistake surfaced,
+  which is why both checkers now carry the reasoning in comments.
+
+### Fixed — geometry nodes, the last untested creation method
+
+- **Iron rule 18 silently destroyed every geometry-nodes asset.** Geometry nodes
+  output exists only as a modifier result, and rule 18 mandates
+  `export_apply=False`, so the exporter writes the *base* mesh. Measured on a
+  2,688-triangle scatter:
+
+  | Export | Result |
+  |---|---|
+  | `export_apply=False`, modifier live | **2 tris, 1.0 kB** |
+  | `export_apply=True` | 2,688 tris, but breaks rule 18 |
+  | modifier applied, then `export_apply=False` | **2,688 tris, 208.7 kB** |
+
+  Nothing errors, so a batch would have recorded the asset as done. Rule 18 now
+  names the exception and the flow says to apply the modifier — which keeps the
+  rule intact, since the `.blend` still holds the procedural version (rule 7).
+- The flow told you to Realize Instances "before export", which is necessary but
+  not sufficient: realizing without applying still exports the base mesh. Both
+  steps are now spelled out, and `references/batch-mode.md` carries the warning for
+  the runner, where the failure would be unattended.
+- Verified that all four prescribed node types still exist on Blender 5.0.1:
+  `DistributePointsOnFaces`, `InstanceOnPoints`, `ObjectInfo`, `RealizeInstances`.
+
+### Fixed
+
+- Three of the twelve per-file line counts in the README structure table had
+  drifted by 23-54% after eight pull requests (`characters.md` ~430 → 638,
+  `sourcing-strategy.md` ~65 → 100, `ai-generation.md` ~220 → 270). The CI checked
+  the *total* and the SKILL.md row but not the individual rows, which is exactly how
+  a stale number survives review. It now checks every row, and the seeded-regression
+  suite covers the case: **12/12**.
+
+### Added — continuous checks on the documentation itself
+
+- **`tools/verify_docs.py`** plus `.github/workflows/verify.yml`: the repository had
+  no CI at all. Nine checks, text only, no Blender, a few seconds on every push.
+  Each one exists because the corresponding mistake was actually made here — iron
+  rules forming an unbroken sequence, every cited `rule N` existing **and meaning
+  what the citation claims**, the README count matching, referenced files existing
+  and staying inside the plugin, README images resolving, no bare `pip install`,
+  a valid manifest whose `source` is a real directory, and commands documented in
+  the form that actually resolves.
+- **`tools/test_verify_docs.py`** seeds each of those
+  regressions into a copy of the repo and asserts the checker catches it: **11/11**,
+  with the clean repo passing. A checker that only ever passes proves nothing —
+  the same reasoning that exposed rule 19's material audit and the rig validator.
+- Writing it caught two false positives in the checker itself: a 40-character
+  window matched "Rule 6 is overridden — Rule 28 (no prompts)" against rule 6, and
+  `uv pip install` tripped the bare-pip rule. Both fixed before merging, because a
+  check that fires on correct input is the one people learn to ignore.
+
+### Fixed
+
+- README line counts were stale after eight pull requests: `SKILL.md` ~660 → ~880,
+  total ~3,250 → ~3,870.
+
+### Changed — pose is now measured, not assumed
+
+- **Iron rule 13 only covered generation.** It said to generate characters in
+  T-pose, and stopped there — so a marketplace or downloaded character went
+  straight to rigging in whatever pose its author used, unmeasured. Rule 13 now
+  requires measuring the pose on import, and PHASE 4 carries the measurement.
+- **T-pose is not available from free libraries.** Measured on three: Khronos
+  `RiggedFigure` A-pose at -26.8°, Khronos `CesiumMan` A-pose at -28.2°, Blender's
+  Human Base Meshes I-pose at -70.8°. A-pose and arms-down are *modelling*
+  conventions; T-pose is a *rigging* convention. So converting is the normal path,
+  and `references/characters.md` now documents it rather than assuming a T-posed
+  source appears.
+- **The pose measurement has to be shoulder-to-hand.** A horizontal slice of the
+  mesh picks up hip and thigh vertices: it reported -17° on a body whose arms were
+  at -71°, an error of 53°. The check is now written down, along with the
+  silhouette test that catches a bad conversion — wingspan ≈ height.
+- **Documented the conversion that works, and three that do not.** Building a
+  throwaway rig for its arm *weights*, then rotating vertices about the shoulder
+  scaled by that weight, gives a clean shoulder. Selecting arm vertices
+  geometrically puts the pivot on the skull; posing with Euler angles on a bone
+  picks the wrong local axis; and the right axis with the wrong sign pushes the
+  arms further down. Each of those is recorded with the number it produced, plus
+  the two lines of trigonometry that settle the sign before you run anything.
+- **Recorded a CC0 source.** Blender's Human Base Meshes bundle, with its two
+  traps: the asset entries are preview *cameras* (geometry is under `GEO-`), and an
+  object appended as a dependency can land in no collection at all and never appear.
+
+### Changed — the skill now picks the rig instead of leaving it to judgment
+
+- **New PHASE 5c, RIG SELECTION, in `SKILL.md`** — not buried in a reference the
+  model may never load. It measures the mesh first and routes from the count, with
+  the tiers measured on Blender 5.0.1:
+
+  | Mesh vertices | Rig | Deform bones |
+  |---:|---|---:|
+  | < 700 | hand-built, 12-20 bones | 12-20 |
+  | 700 - 3,000 | `armature_basic_human_metarig_add` | 35 |
+  | > 3,000 | `armature_human_metarig_add` | 160 |
+  | quadruped > 900 | `armature_basic_quadruped_metarig_add` | 46 |
+
+  **A Rigify human needs ~3,200 vertices to be worth it.** The gate also carries the
+  post-skinning check for dead deform bones, and the pointer to the silent IK/FK
+  trap. The 370-vertex figure that produced mush now routes to the hand-built rig.
+- **New iron rule 26**: never pick a rig without measuring vertices ÷ deform bones.
+  Core rules become 1-26, batch 27-31, 31 total. Every cross-reference re-audited
+  by meaning — 0 invalid, and rules 15, 22, 23, 24, 26 and 28 each verified to say
+  what the citation claims.
+
+### Fixed — rigging reference, exercised on a real armature
+
+- **The Layered Actions section stopped exactly where it gets hard.** Its snippet
+  creates and assigns an action, which on Blender 5.0.1 leaves it empty — 0 slots,
+  0 layers. The next thing a reader reaches for, `action.fcurves`, raises
+  `AttributeError: 'Action' object has no attribute 'fcurves'`, because 4.4+ moved
+  F-curves into a channelbag per slot per strip. Every pre-4.4 snippet online uses
+  the old attribute, and nothing in the error hints at slots. The section now
+  carries the walk down to the F-curves, verified: 1 slot, 1 layer, 3 curves of 2
+  keyframes. The previous text hedged with "the API is evolving rapidly" instead of
+  giving the path.
+
+- **The validation script raised three false alarms on a production rig.** Run
+  against a generated Rigify human it flagged 10 root bones, 706 bones against a
+  75-bone mobile limit, and 486 names with "special characters". All three were
+  wrong in the way that matters — they fire on a correct rig:
+  - the 10 parentless bones are mechanism bones, **none of them deform**;
+  - the 75-bone budget applies to the skin palette, and the same rig has **160
+    deform bones**, not 706;
+  - the offending character is the **hyphen** in Rigify's own `DEF-spine` /
+    `MCH-torso` convention, which survives glTF and FBX intact — verified, 486
+    hyphenated node names in the exported GLB.
+
+  It now counts deforming bones and deforming roots, and allows hyphens.
+  Re-verified both ways: **2 alerts on the Rigify rig, both genuine**, and still
+  **6 of 6** on the seeded rig.
+- **`export_def_bones` was never mentioned anywhere.** Nor was `use_deform`. Without
+  it the glTF exporter ships every control and mechanism bone as a joint: measured
+  on the Rigify human, 865 joints and 255 kB become **319 joints and 98 kB**. The
+  validator now points at it whenever total bones far exceed deforming ones.
+- **Rigify had one table row and no code**, despite being the only free, built-in,
+  offline auto-rigging option. It now has the three calls that work — including
+  that `addon_utils.enable()` is not enough: it loads the module but leaves
+  `RigifyParameters` incomplete, so generation dies on
+  `'RigifyParameters' object has no attribute 'make_custom_pivot'`, which names
+  nothing relevant. `bpy.ops.preferences.addon_enable(module="rigify")` is the one
+  that works.
+
+- **Nothing said to match the rig's density to the mesh's.** Rigging a real CC-BY
+  character (Khronos `RiggedFigure`, 370 vertices) with a Rigify human produced
+  visible mush: the head detached at the neck and the limbs collapsed into the
+  torso. Cause, measured: **2.3 vertices per deform bone**, and **107 of the 160
+  deform bones influenced nothing at all** — automatic weights had no geometry to
+  localise them, so the vertices that were weighted got smeared across 8 or 9 bones
+  each. The same mesh, same pose, on a 13-bone rig sized to it: 28.5 vertices per
+  bone, 0 dead bones, volume held. The reference now says to check the ratio before
+  choosing a rig, and gives the one-line check.
+- **A freshly generated Rigify rig ignores its own FK controls, silently.** Every
+  limb ships `IK_FK = 0.0`, so IK drives the chain and rotating `upper_arm_fk.L`
+  moves nothing — measured, 0 of 370 vertices displaced, with no error or warning.
+  Setting it to 1.0 moved 221 of 370 on the same pose. Documented as the first thing
+  to check when a Rigify pose "does not apply".
+
+### Verified — no changes needed
+
+- **Bone Collections (section 10) work verbatim** on Blender 5.0.1: three
+  collections created, `DEF` populated by prefix, `MCH` hidden. This is the first
+  section of the skill exercised that needed no correction.
+- **The character validation script catches everything it claims to.** Run against
+  a rig seeded with each defect — non-unit armature scale, a second root bone, a
+  bone name with spaces, 5 influences on a vertex, unweighted vertices, shape keys
+  with an unapplied modifier — it reported **6 of 6**, no false negatives. Both
+  results are now recorded in the reference, since "we tested this" is worth as
+  much to a reader as a fix.
+
+### Fixed — USDZ export, measured instead of assumed
+
+- **The skill sent users to install two external tools they do not need.**
+  `references/export-targets.md` stated "Blender's native USDZ export is limited"
+  and offered only Reality Converter or `usdzconvert`. Measured on Blender 5.0.1
+  with a full PolyHaven PBR material, the native `bpy.ops.wm.usd_export` produced a
+  1.86 MB archive with four JPEG maps and a complete preview-surface graph — 1
+  `UsdPreviewSurface`, 4 `UsdUVTexture`, 1 `UsdPrimvarReader_float2`, with `normal`,
+  `roughness`, `metallic` and `displacement` connected. That is *more* than the glTF
+  export of the same material carries, which keeps 3 maps and drops displacement.
+  The native path is now documented first, with the parameters that work.
+- **One real constraint found, and it was not the one claimed.**
+  `convert_world_material` defaults to True and writes a `DomeLight` referencing an
+  `.exr` into the archive. The USDZ spec admits PNG and JPEG only, so the archive is
+  non-conforming and iOS Quick Look may reject it. `convert_world_material=False`
+  removes it — verified. This is the sort of specific, checkable limit that
+  "native export is limited" was standing in for.
+- The third and last known instance of one pattern: the skill reimplementing, worse,
+  a capability its own dependency already ships. The other two were Hunyuan3D
+  generation (a ~25 GB local install for something the addon exposes natively) and
+  texturing (a hand-built node graph for three maps where `set_texture` produces
+  sixteen nodes covering seven).
+
+### Fixed — texturing, exercised against the live PolyHaven API
+
+- **The recommended texturing workflow silently loses over half its texture
+  maps.** Measured end to end on `american_walnut_veneer`: PolyHaven supplies 7
+  maps (AO, ARM, Diffuse, Displacement, nor_dx, nor_gl, Rough) and the exported
+  glTF carries **3** — base colour, roughness and normal. AO is dropped even
+  though glTF has an `occlusionTexture` slot, because Blender only fills it from
+  an ARM-packed arrangement. Displacement has no glTF slot at all. Nothing in
+  the skill said so: `AO`, `occlusion`, `Displacement` and
+  `KHR_texture_transform` had zero mentions across `texturing-strategy.md` and
+  `validation-checklist.md`. The compatibility table there covered Principled
+  BSDF *properties* only, never texture *maps*. A map-level table is now
+  documented alongside it.
+- **Rule 19's audit was checking the wrong level.** `material_audit()` listed
+  procedural node types, which cannot see any of the losses above: it flagged a
+  harmless Mapping node while missing both the dropped Displacement and the
+  dropped AO. It now checks node types *and* image-map roles, and reports the
+  exporter's duplicate-image case. Verified: it names all four real losses on the
+  PolyHaven material, and reports zero findings across the fifteen gallery assets.
+- **Step 6 hand-built the node graph.** It wrote `ShaderNodeTexImage` chains for
+  three maps, while the addon's own `download_polyhaven_asset(asset_type='textures')`
+  plus `set_texture` produce a 16-node material with all seven maps and the
+  colourspaces already correct. `set_texture` had zero mentions in
+  `texturing-strategy.md`. The addon path is now the prescribed one — the same
+  reimplementation problem already fixed for Hunyuan3D generation.
+- `set_texture` names its material `<texture_id>_material_<object>`, which is not
+  the `M_Type_Variant` convention. The strategy now says to rename (rule 25).
+
+### Fixed — the marketplace path, exercised against the live PolyHaven API
+
+- **IMPORT never renamed anything.** Rule 15 wants `SM_PascalCase` objects with a
+  matching `_Mesh` data-block, but a marketplace download lands under the source
+  file's name (`ClassicNightstand_01`) and an AI import under whatever the importer
+  chose. The phase said nothing about it, so every non-scripted asset broke rule 15
+  by default. New iron rule 25 requires the rename in PHASE 4, whatever the source.
+- **Rule 2's screenshots could show an empty scene.** `get_viewport_screenshot`
+  captures the viewport as aimed, and on a wide view a 0.7 m prop is a few pixels at
+  the origin — so the shot the skill relies on to verify a modification looks like
+  the modification deleted everything. New iron rule 22 requires framing the subject
+  first, with the `view3d.view_selected` override that does it.
+- Iron rules: two core rules added (22, 25), so the core set is 1-25 and the
+  batch-specific rules move from 24-28 to 26-30. 30 total, 25 core plus 5 batch.
+  Every `rule N` cross-reference in SKILL.md, README.md and references/ was audited
+  against the renumbered set — by meaning, not just by existence, which is how the
+  previous renumbering left rule 28 pointing at the wrong rule.
+
+### Verified
+
+- The `marketplace` creation method now works end to end against the live PolyHaven
+  API: 521 models indexed, search returns polycount and dimensions for tier
+  selection, download and import succeed, and scale is exact — PolyHaven reports
+  millimetres (`568 x 424 x 700`) and the importer produces
+  `0.568 x 0.424 x 0.7` Blender units.
+- `references/sourcing-strategy.md` records the millimetre-to-metre detail, so a
+  raw 568-unit object is recognisable as a failed conversion.
+
+### Fixed — `/kiln setup`, exercised for the first time
+
+- **Every `pip3 install` in the skill failed.** All six of them, including
+  `pip3 install gradio_client` — the first install the "recommended to start"
+  path proposes. Homebrew and most Linux distros ship an externally-managed
+  Python (PEP 668), where a bare `pip3 install` errors out with
+  `externally-managed-environment`. All six now create and use a venv, and
+  SKILL.md explains why before any pip is proposed.
+- **Five of the eleven fields in the environment report had no command to fill
+  them**: Blender MCP status, models list, device, nano-banana, and the PEP 668
+  warning. SKILL.md now carries a table pairing every field with its command and
+  its gotcha.
+- **The report asked for VRAM on Apple Silicon, where there is none.**
+  `system_profiler SPDisplaysDataType` reports no VRAM line — memory is unified.
+  The template now says "unified" and uses `sysctl -n hw.memsize`.
+- **Device detection was circular**: it wanted `cuda / mps / cpu`, which only
+  `torch` can confirm, and torch is not installed until a local backend is. It now
+  reports "unknown" rather than guessing, with `nvidia-smi` and
+  `platform.machine()` as the pre-torch signals.
+- **Backend choice did not offer the MCP-native path** documented in the previous
+  release, and asked the user to choose without first checking
+  `get_hunyuan3d_status()` / `get_hyper3d_status()` to see if it was already on.
+- Blender MCP detection now uses `get_addon_status()`, which also reports whether
+  the addon is behind the server's protocol — a raw port check only proves
+  something is listening.
+
+### Fixed — batch mode, exercised for the first time
+
+- **The batch runner disabled the integrations it depends on, between every
+  asset.** Its scene-clear step was `bpy.ops.wm.read_homefile(use_empty=True)`,
+  which builds a fresh scene — and the addon keeps every integration flag as a
+  *scene* property (`scene.blendermcp_use_polyhaven` and friends). Measured: the
+  flag flips to False, the command stops being registered, and the next call
+  answers `Unknown command type`. Asset 1 succeeds, every asset after it fails,
+  and rule 25 forbids prompting, so an overnight batch failed silently from the
+  second asset onward. The clear now removes datablocks instead, which leaves
+  scene properties intact — verified.
+- **Pre-flight did not validate integrations.** Rule 25 forbids prompting once
+  the loop runs, so a missing integration has to be caught before starting.
+  Pre-flight now maps each `method` in the manifest to the status calls it needs
+  and aborts with the addon's own remediation text.
+- Pre-flight now names the tool for "verify Blender MCP is connected"
+  (`get_addon_status`) and checks the addon version, since an outdated addon is
+  missing commands a batch may need.
+- Stale cross-references in `references/batch-mode.md`: "All 21 existing iron
+  rules" (now 23), and rule 28 pointing at "Rule 23 (no prompts)" when the
+  renumbering in the previous release moved it to 25.
+- Removed three dangling entries from SKILL.md's resource table
+  (`../creative-excellence/`, `../threejs-r3f/`, `../motion-principles/`). None
+  exist, and they point outside the plugin directory, which the plugin spec
+  forbids.
+
+### Added
+
+- SKILL.md now records that MCP tool names and the addon's raw socket command
+  names differ, that some MCP tools have no socket equivalent, and that ticking
+  an integration checkbox takes effect without reconnecting.
+
+### Fixed — found by exercising the skill against a live Blender MCP addon
+
+- **The SOURCE phase failed on a default install with a misleading error.** All
+  four addon integrations (PolyHaven, Sketchfab, Tencent Hunyuan3D, Hyper3D
+  Rodin) ship OFF, and while an integration is off the addon does not register
+  its commands at all — so `search_polyhaven_assets` answers
+  `Unknown command type: search_polyhaven_assets`, which reads as a version
+  mismatch. The `get_*_status` tools are always registered and carry the exact
+  remediation, including the Sketchfab API-key step. New iron rule 22 requires
+  checking them first and surfacing their message.
+- **The skill reimplemented 3D generation the addon already provides.**
+  `references/ai-generation.md` prescribed a ~25 GB local `hy3dgen` install
+  (CUDA-only texturing) with an HF Spaces fallback, while never mentioning
+  `generate_hunyuan3d_model` and its job tools — nor Hyper3D Rodin, a second
+  backend, at all. The MCP-native path is now documented first.
+- **Rule 14 could not be satisfied as written.** It asked to verify dimensions,
+  but the skill only ever called `get_scene_info()`, which does not carry them.
+  New iron rule 23 points at `get_object_info()`, whose `world_bounding_box` is
+  what the check actually needs.
+- 15 of the 25 MCP tools were never mentioned anywhere in the skill. SKILL.md now
+  carries the full tool surface, extracted from the server source and exercised
+  live.
+
+### Changed
+
+- Iron rules: two core rules added (22, 23), so the batch-specific rules move
+  from 22-26 to 24-28. 28 rules total, 23 core plus 5 batch.
+
+### Added
+
+- `examples/gallery/` — a reproducible render gallery. Fifteen props across three
+  themes (forge, sci-fi modular, stylised nature) modelled from scratch by script,
+  cleaned, audited, rendered in headless EEVEE and exported to GLB. Measured:
+  21,879 tris, 1,456 kB raw, 133 kB after dedup/weld/Draco. Run `run_gallery.sh`
+  to regenerate everything, or `THEMES="forge nature" ./run_gallery.sh` for a
+  subset.
+- The gallery scripts now follow the skill's own rules rather than merely claiming
+  to. Added: `SM_PascalCase` object names with matching `_Mesh` data-blocks and
+  `M_Type_Variant` materials (rule 15), poly-budget reporting against the
+  `topology-rules.md` tiers (rule 4), a material export audit before every GLTF
+  export (rule 19), transform application alongside merge and recalc (rule 10),
+  a scale check (rule 14), one output folder per asset with its `.blend`
+  (rules 7 and 16), and a per-asset production log recording licences (rule 17).
+  The README states which rules a headless script cannot honour, and why.
+- README gallery section, per-theme metrics tables, and hero contact sheet.
+- README section "Running over Blender MCP", with viewport screenshots from a live
+  session: the pipeline building an asset inside a running Blender, and the addon
+  panel showing all four integrations off — which is what iron rule 22 is about.
+
+## [1.0.0] — 2026-08-26
+
+First tagged release. The pipeline landed in April 2026 but was never released;
+everything below ships in 1.0.0.
+
+### Pipeline
+
+- Full 8-phase pipeline: CONFIG → BRIEF → SOURCE → IMPORT → CLEANUP → TEXTURING →
+  OPTIMIZE → EXPORT.
+- Batch mode: `/kiln batch` wizard, YAML manifest, autonomous runner.
+- Reference image support across the full pipeline.
+- Hunyuan3D 2.x generation — local (CUDA / Apple Silicon MPS) and HF Spaces.
+- Marketplace sourcing via PolyHaven and Sketchfab.
+- Four texturing strategies plus a procedural-to-baked workflow.
+- Optimization via gltf-transform and gltfpack, with LOD generation.
+- GLB / FBX / USDZ export with an 8-point post-export validation checklist.
+- Character support: T-pose enforcement, rigging patterns, Blender 5.x bone collections.
+- 26 iron rules (21 core + 5 batch-specific).
+
+### Fixed before release
+
+- **The plugin was not installable.** `.claude-plugin/marketplace.json` set `source`
+  to `skills/blender-kiln/SKILL.md` — a file, under a directory that does not exist
+  in this repo. The spec requires a directory starting with `./`. Since a `SKILL.md`
+  at the plugin root is auto-loaded as a single-skill plugin, `source` is now `./`.
+  Verified with `claude plugin install` and `claude plugin details`.
+- **The documented commands were not invocable.** The README and `SKILL.md` listed
+  twelve `/kiln:<sub>` entries, but `kiln` is a single skill with no `commands/`
+  directory, and a colon addresses a plugin's skill (`blender-kiln:kiln`) — so
+  `/kiln:setup` resolved to nothing. All entry points are now documented as
+  `/kiln <sub>`, and `SKILL.md` gained an argument-routing table.
+- `owner` is now an object, as the marketplace schema requires.
+- Two repository `.png` files were saved HTML error pages, not images. Removed.
+
+### Added before release
+
+- `LICENSE` — MIT was declared in the README and the manifest, but no license file
+  existed, so GitHub reported the repository as unlicensed.
+- `.claude-plugin/plugin.json` manifest (version, author, license, keywords).
+- `.gitignore`, this changelog, and a 1280×640 social preview image.
+- 20 repository topics (previously none) and a tightened description.
+
+### Removed before release
+
+- The `npx skills add blender-kiln` install command from the README: the repository
+  is not published on that registry, so the command failed.

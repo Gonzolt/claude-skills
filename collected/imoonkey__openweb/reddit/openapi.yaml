@@ -1,0 +1,1347 @@
+openapi: 3.1.0
+info:
+  title: reddit
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-03-29T06:39:38.584000Z
+    requires_auth: false
+servers:
+- url: https://www.reddit.com
+  x-openweb:
+    transport: node
+paths:
+  /r/{subreddit}.json:
+    get:
+      operationId: getSubredditPosts
+      summary: >-
+        Get subreddit posts — title, author, score, comment count, URL,
+        created timestamp, thumbnail, selftext, flair, awards
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getSubredditPosts
+        build:
+          stable_id: 9534943fee0ebe7a
+          tool_version: 2
+      parameters:
+      - name: subreddit
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Subreddit name without r/ prefix (e.g. "programming", "technology")
+        example: programming
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - hot
+          - new
+          - top
+          - rising
+        description: Sort order for posts
+        example: hot
+      - name: t
+        in: query
+        schema:
+          type: string
+          enum:
+          - hour
+          - day
+          - week
+          - month
+          - year
+          - all
+        description: Time filter (only used with sort=top)
+        example: day
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of posts to return (max 100)
+        example: 25
+      - name: after
+        in: query
+        schema:
+          type: string
+        description: Pagination cursor — fullname of the last item (e.g. "t3_1s5ja3a")
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      after:
+                        type: string
+                        nullable: true
+                      dist:
+                        type: integer
+                      modhash:
+                        type: string
+                      children:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                title:
+                                  type: string
+                                author:
+                                  type: string
+                                subreddit:
+                                  type: string
+                                score:
+                                  type: integer
+                                num_comments:
+                                  type: integer
+                                url:
+                                  type: string
+                                permalink:
+                                  type: string
+                                selftext:
+                                  type: string
+                                created_utc:
+                                  type: number
+                                is_self:
+                                  type: boolean
+                                over_18:
+                                  type: boolean
+                                stickied:
+                                  type: boolean
+                                thumbnail:
+                                  type: string
+                                domain:
+                                  type: string
+                                link_flair_text:
+                                  type: string
+                                  nullable: true
+                                upvote_ratio:
+                                  type: number
+
+                required:
+                - data
+  /r/popular.json:
+    get:
+      operationId: getPopularPosts
+      summary: >-
+        Get popular posts across all subreddits — title, author, score,
+        comment count, subreddit, URL, created timestamp
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getPopularPosts
+        build:
+          stable_id: a134943fee0ebe7b
+          tool_version: 2
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of posts to return (max 100)
+        example: 25
+      - name: after
+        in: query
+        schema:
+          type: string
+        description: Pagination cursor — fullname of the last item
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      after:
+                        type: string
+                        nullable: true
+                      dist:
+                        type: integer
+                      modhash:
+                        type: string
+                      children:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                title:
+                                  type: string
+                                author:
+                                  type: string
+                                subreddit:
+                                  type: string
+                                score:
+                                  type: integer
+                                num_comments:
+                                  type: integer
+                                url:
+                                  type: string
+                                permalink:
+                                  type: string
+                                selftext:
+                                  type: string
+                                created_utc:
+                                  type: number
+                                is_self:
+                                  type: boolean
+                                over_18:
+                                  type: boolean
+                                stickied:
+                                  type: boolean
+                                thumbnail:
+                                  type: string
+                                domain:
+                                  type: string
+                                link_flair_text:
+                                  type: string
+                                  nullable: true
+                                upvote_ratio:
+                                  type: number
+
+                required:
+                - data
+  /search.json:
+    get:
+      operationId: searchPosts
+      summary: >-
+        Search posts by keyword — title, author, score, comment count,
+        subreddit, URL, selftext snippet, created timestamp
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: searchPosts
+        build:
+          stable_id: 2c3d7a7c71f0c7ea
+          tool_version: 2
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Search query
+        example: typescript
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - relevance
+          - hot
+          - top
+          - new
+          - comments
+        description: Sort order for search results
+        example: relevance
+      - name: t
+        in: query
+        schema:
+          type: string
+          enum:
+          - hour
+          - day
+          - week
+          - month
+          - year
+          - all
+        description: Time filter
+        example: all
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of results to return (max 100)
+        example: 25
+      - name: after
+        in: query
+        schema:
+          type: string
+        description: Pagination cursor
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - link
+          - sr
+          - user
+        description: "Filter by type: link (posts), sr (subreddits), user (users)"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      after:
+                        type: string
+                        nullable: true
+                      dist:
+                        type: integer
+                      facets:
+                        type: object
+                      children:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                title:
+                                  type: string
+                                author:
+                                  type: string
+                                subreddit:
+                                  type: string
+                                score:
+                                  type: integer
+                                num_comments:
+                                  type: integer
+                                url:
+                                  type: string
+                                permalink:
+                                  type: string
+                                selftext:
+                                  type: string
+                                created_utc:
+                                  type: number
+                                is_self:
+                                  type: boolean
+                                over_18:
+                                  type: boolean
+                                thumbnail:
+                                  type: string
+                                domain:
+                                  type: string
+                                link_flair_text:
+                                  type: string
+                                  nullable: true
+                                upvote_ratio:
+                                  type: number
+
+                required:
+                - data
+  /r/{subreddit}/comments/{post_id}.json:
+    get:
+      operationId: getPostComments
+      summary: >-
+        Get post with comments — post title, selftext, author, score,
+        comment tree with author, body, score, replies, created timestamp
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getPostComments
+        build:
+          stable_id: 361929b38dce67b4
+          tool_version: 2
+      parameters:
+      - name: subreddit
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Subreddit name without r/ prefix
+        example: programming
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Post ID (base-36 alphanumeric, e.g. "1s5ja3a")
+        example: 1s5ja3a
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - confidence
+          - top
+          - new
+          - controversial
+          - old
+          - qa
+        description: Comment sort order
+        example: confidence
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of top-level comments to return
+        example: 50
+      responses:
+        "200":
+          description: Success. Returns array of two Listings — [0] is the post, [1] is the comment tree.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                    data:
+                      type: object
+                      properties:
+                        after:
+                          type: string
+                          nullable: true
+                        dist:
+                          type: integer
+                          nullable: true
+                        children:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              kind:
+                                type: string
+                              data:
+                                type: object
+                                description: >-
+                                  Post data (kind=t3) in listing[0], comment data (kind=t1) in listing[1].
+                                  Posts have title, selftext, author, score; comments have body, author, score, depth, replies.
+                                properties:
+                                  id:
+                                    type: string
+                                  name:
+                                    type: string
+                                  author:
+                                    type: string
+                                  score:
+                                    type: integer
+                                  created_utc:
+                                    type: number
+                                  permalink:
+                                    type: string
+                                  title:
+                                    type: string
+                                    description: Post title (t3 only)
+                                  selftext:
+                                    type: string
+                                    description: Post body text (t3 only)
+                                  body:
+                                    type: string
+                                    description: Comment body text (t1 only)
+                                  depth:
+                                    type: integer
+                                    description: Nesting depth (t1 only)
+                                  parent_id:
+                                    type: string
+                                    description: Parent fullname (t1 only)
+                                  is_submitter:
+                                    type: boolean
+                                    description: Whether commenter is OP (t1 only)
+                                  replies:
+                                    description: Nested comment listing (t1 only), empty string if no replies
+                                    oneOf:
+                                    - type: object
+                                    - type: string
+
+                  required:
+                  - data
+  /user/{username}/about.json:
+    get:
+      operationId: getUserProfile
+      summary: >-
+        Get user profile — display name, karma (link + comment), account
+        created date, description, avatar URL, is_gold, verified
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getUserProfile
+        build:
+          stable_id: b234567890abcdef
+          tool_version: 2
+      parameters:
+      - name: username
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Reddit username (without u/ prefix)
+        example: spez
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      id:
+                        type: string
+                      verified:
+                        type: boolean
+                      is_gold:
+                        type: boolean
+                      is_mod:
+                        type: boolean
+                      is_employee:
+                        type: boolean
+                      link_karma:
+                        type: integer
+                      comment_karma:
+                        type: integer
+                      total_karma:
+                        type: integer
+                      created:
+                        type: number
+                      created_utc:
+                        type: number
+                      icon_img:
+                        type: string
+                      has_verified_email:
+                        type: boolean
+                      subreddit:
+                        type: object
+
+                required:
+                - data
+  /user/{username}.json:
+    get:
+      operationId: getUserPosts
+      summary: >-
+        Get user's recent posts and comments — title, body, score, subreddit,
+        created timestamp, type (post or comment)
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getUserPosts
+        build:
+          stable_id: c345678901abcdef
+          tool_version: 2
+      parameters:
+      - name: username
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Reddit username (without u/ prefix)
+        example: spez
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - new
+          - hot
+          - top
+        description: Sort order
+        example: new
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of items to return (max 100)
+        example: 25
+      - name: after
+        in: query
+        schema:
+          type: string
+        description: Pagination cursor
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      after:
+                        type: string
+                        nullable: true
+                      dist:
+                        type: integer
+                      modhash:
+                        type: string
+                      children:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                              description: "t3 for posts, t1 for comments"
+                            data:
+                              type: object
+                              description: >-
+                                Mixed posts and comments. Posts (t3) have title, url, num_comments;
+                                comments (t1) have body, parent_id.
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                author:
+                                  type: string
+                                subreddit:
+                                  type: string
+                                score:
+                                  type: integer
+                                created_utc:
+                                  type: number
+                                permalink:
+                                  type: string
+                                title:
+                                  type: string
+                                  description: Post title (t3 only)
+                                selftext:
+                                  type: string
+                                  description: Post body text (t3 only)
+                                body:
+                                  type: string
+                                  description: Comment body text (t1 only)
+                                url:
+                                  type: string
+                                  description: Link URL (t3 only)
+                                parent_id:
+                                  type: string
+                                  description: Parent fullname (t1 only)
+
+                required:
+                - data
+  /r/{subreddit}/about.json:
+    get:
+      operationId: getSubredditAbout
+      summary: >-
+        Get subreddit metadata — display name, title, description, subscriber
+        count, active users, created date, rules
+      x-openweb:
+        permission: read
+        transport: page
+        adapter:
+          name: reddit-read
+          operation: getSubredditAbout
+        build:
+          stable_id: rd0006
+          tool_version: 1
+      parameters:
+      - name: subreddit
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Subreddit name (without r/ prefix)
+        example: programming
+      responses:
+        "200":
+          description: Subreddit metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      display_name:
+                        type: string
+                      display_name_prefixed:
+                        type: string
+                      title:
+                        type: string
+                      public_description:
+                        type: string
+                      description:
+                        type: string
+                      subscribers:
+                        type: integer
+                      accounts_active:
+                        type: integer
+                        nullable: true
+                      created:
+                        type: number
+                      created_utc:
+                        type: number
+                      icon_img:
+                        type: string
+                      community_icon:
+                        type: string
+                      header_img:
+                        type: string
+                        nullable: true
+                      quarantine:
+                        type: boolean
+                      over18:
+                        type: boolean
+                      subreddit_type:
+                        type: string
+
+                required:
+                - data
+  /api/vote:
+    post:
+      operationId: vote
+      summary: Vote on a post or comment (upvote, downvote, or unvote)
+      x-openweb:
+        permission: write
+        build:
+          stable_id: rd0002
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id
+              - dir
+              properties:
+                id:
+                  type: string
+                  description: Fullname of the thing to vote on (e.g. "t3_abc123").
+                dir:
+                  type: integer
+                  description: "Vote direction: 1 = upvote, 0 = unvote, -1 = downvote."
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/save:
+    post:
+      operationId: savePost
+      summary: Save (bookmark) a post or comment
+      x-openweb:
+        permission: write
+        build:
+          stable_id: rd0010
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id
+              properties:
+                id:
+                  type: string
+                  description: Fullname of the thing to save (e.g. "t3_abc123").
+                category:
+                  type: string
+                  description: Optional save category (Reddit Gold feature).
+      responses:
+        "200":
+          description: Success (empty JSON object).
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/me:
+    get:
+      operationId: getMe
+      summary: Get authenticated user profile via OAuth
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: read
+        build:
+          stable_id: rd0003
+          tool_version: 1
+      parameters: []
+      responses:
+        "200":
+          description: Authenticated user profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id:
+                    type: string
+                  is_employee:
+                    type: boolean
+                  verified:
+                    type: boolean
+                  is_gold:
+                    type: boolean
+                  is_mod:
+                    type: boolean
+                  link_karma:
+                    type: integer
+                  comment_karma:
+                    type: integer
+                  total_karma:
+                    type: integer
+                  created:
+                    type: number
+                  created_utc:
+                    type: number
+                  icon_img:
+                    type: string
+                  has_verified_email:
+                    type: boolean
+                  features:
+                    type: object
+
+                required:
+                - id
+                - name
+  /api/submit:
+    post:
+      operationId: createPost
+      summary: Create a new post (self or link) in a subreddit
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0011
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - sr
+              - title
+              - kind
+              properties:
+                sr:
+                  type: string
+                  description: Subreddit name without r/ prefix (e.g. "test")
+                title:
+                  type: string
+                  description: Post title
+                kind:
+                  type: string
+                  enum:
+                  - self
+                  - link
+                  description: "Post type: self (text post) or link (URL post)"
+                text:
+                  type: string
+                  description: Post body text (for self posts)
+                url:
+                  type: string
+                  description: URL to submit (for link posts)
+                api_type:
+                  type: string
+                  const: json
+                nsfw:
+                  type: boolean
+                  description: Mark as NSFW
+                spoiler:
+                  type: boolean
+                  description: Mark as spoiler
+                flair_id:
+                  type: string
+                  description: Flair template ID
+                flair_text:
+                  type: string
+                  description: Flair text
+                resubmit:
+                  type: boolean
+                  description: Allow resubmitting an already-submitted URL
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  json:
+                    type: object
+                    properties:
+                      errors:
+                        type: array
+                        items:
+                          type: array
+                          items:
+                            type: string
+                      data:
+                        type: object
+                        properties:
+                          url:
+                            type: string
+                          drafts_count:
+                            type: integer
+                          id:
+                            type: string
+                          name:
+                            type: string
+                            description: Fullname of the created post (e.g. "t3_abc123")
+
+  /api/comment:
+    post:
+      operationId: createComment
+      summary: Create a comment on a post or reply to a comment
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0012
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - thing_id
+              - text
+              properties:
+                thing_id:
+                  type: string
+                  description: "Fullname of the parent (post: t3_xxx, comment: t1_xxx)"
+                text:
+                  type: string
+                  description: Comment body (markdown supported)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  json:
+                    type: object
+                    properties:
+                      errors:
+                        type: array
+                        items:
+                          type: array
+                          items:
+                            type: string
+                      data:
+                        type: object
+                        properties:
+                          things:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                kind:
+                                  type: string
+                                data:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: string
+                                    name:
+                                      type: string
+                                    author:
+                                      type: string
+                                    body:
+                                      type: string
+                                    parent_id:
+                                      type: string
+                                    created_utc:
+                                      type: number
+
+  /api/del:
+    post:
+      operationId: deleteThing
+      summary: Delete a post or comment by fullname
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0013
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - id
+              properties:
+                id:
+                  type: string
+                  description: "Fullname of the thing to delete (post: t3_xxx, comment: t1_xxx)"
+      responses:
+        "200":
+          description: Success (empty response on success).
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/subscribe:
+    post:
+      operationId: subscribe
+      summary: Subscribe or unsubscribe from a subreddit
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0014
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - action
+              - sr_name
+              properties:
+                action:
+                  type: string
+                  enum:
+                  - sub
+                  - unsub
+                  description: "sub = subscribe, unsub = unsubscribe"
+                sr_name:
+                  type: string
+                  description: Subreddit name without r/ prefix (e.g. "programming")
+      responses:
+        "200":
+          description: Success (empty response on success).
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/unsave:
+    post:
+      operationId: unsavePost
+      summary: Remove a post or comment from saved/bookmarked items
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0015
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - id
+              properties:
+                id:
+                  type: string
+                  description: "Fullname of the thing to unsave (e.g. \"t3_abc123\")"
+      responses:
+        "200":
+          description: Success (empty response on success).
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/block_user:
+    post:
+      operationId: blockUser
+      summary: Block a user by account ID
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: rd0016
+          tool_version: 1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - account_id
+              properties:
+                account_id:
+                  type: string
+                  description: "Reddit account ID (t2_xxx) of the user to block"
+                name:
+                  type: string
+                  description: Username of the user to block (alternative to account_id)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /message/inbox.json:
+    get:
+      operationId: getNotifications
+      summary: >-
+        Get inbox notifications — comment replies, post replies, mentions,
+        messages with author, body, subject, context link
+      servers:
+      - url: https://oauth.reddit.com
+        x-openweb:
+          transport: node
+          auth:
+            type: exchange_chain
+            steps:
+            - call: https://www.reddit.com
+              extract: token_v2
+              extract_from: cookie
+            inject:
+              header: Authorization
+              prefix: 'Bearer '
+      x-openweb:
+        permission: read
+        build:
+          stable_id: rd0017
+          tool_version: 1
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Number of notifications to return (max 100)
+        example: 25
+      - name: after
+        in: query
+        schema:
+          type: string
+        description: Pagination cursor — fullname of the last item
+      - name: mark
+        in: query
+        schema:
+          type: boolean
+        description: Whether to mark fetched messages as read (default true)
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      after:
+                        type: string
+                        nullable: true
+                      dist:
+                        type: integer
+                      children:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                              description: "t1 for comment replies, t4 for messages"
+                            data:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                author:
+                                  type: string
+                                subject:
+                                  type: string
+                                body:
+                                  type: string
+                                context:
+                                  type: string
+                                  description: Permalink to the context (comment thread)
+                                subreddit:
+                                  type: string
+                                  nullable: true
+                                was_comment:
+                                  type: boolean
+                                new:
+                                  type: boolean
+                                  description: Whether the notification is unread
+                                type:
+                                  type: string
+                                  description: "Notification type: comment_reply, post_reply, username_mention"
+                                created_utc:
+                                  type: number
+                                parent_id:
+                                  type: string
+                                  nullable: true
+                                dest:
+                                  type: string
+                                  description: Recipient username
+                required:
+                - data

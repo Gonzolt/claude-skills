@@ -1,0 +1,62 @@
+{
+  "skill": "alterlab-uspto",
+  "evals": [
+    {
+      "id": "patent-search-by-assignee-cpc",
+      "prompt": "Find me machine learning patents assigned to Google from 2023-2024 in the G06N classification — I want patent numbers, titles, and dates.",
+      "expected_output": "Triggers the USPTO skill. Notes that the PatentsView PatentSearch API is offline since the March 2026 ODP migration and searches the ODP Patent File Wrapper instead (POST https://api.uspto.gov/api/v1/patent/applications/search, X-API-KEY) with an applicant/title query, a grantDate range filter for 2023-2024, and a cpcClassificationBag condition for G06N, returning application numbers, patent numbers, titles, and grant dates; flags that first-named applicant is not the same as current assignee.",
+      "assertions": [
+        { "type": "should_trigger", "value": true },
+        { "type": "output_contains", "value": "Patent File Wrapper" },
+        { "type": "behavior", "value": "Searches granted patents by company, date range, and CPC classification via the ODP Patent File Wrapper search rather than the offline PatentSearch API." }
+      ]
+    },
+    {
+      "id": "examination-history-peds",
+      "prompt": "Pull the prosecution history for application 16123456 — how many non-final and final rejections, and what's the current status and pendency?",
+      "expected_output": "Triggers the USPTO skill. Uses the ODP Patent File Wrapper (the successor to the retired PEDS; FileWrapperClient in scripts/peds_client.py) to call analyze_prosecution and get_status_summary on the application number — /transactions eventDataBag and /meta-data — reporting counts of CTNF (non-final) and CTFR (final) rejections, current status, filing date, and days since filing.",
+      "assertions": [
+        { "type": "should_trigger", "value": true },
+        { "type": "output_contains", "value": "File Wrapper" },
+        { "type": "behavior", "value": "Retrieves patent examination/prosecution history from the ODP Patent File Wrapper including rejection counts and pendency." }
+      ]
+    },
+    {
+      "id": "trademark-status-tsdr",
+      "prompt": "Check the status of trademark serial number 87654321 — is it registered, and does it need any attention?",
+      "expected_output": "Triggers the USPTO skill. Uses the TSDR API via TrademarkClient (get_trademark_status / check_trademark_health) on serial number 87654321, reporting mark text, status (e.g. REGISTERED, PENDING), filing/registration dates, and any alerts. Treats 87654321 as a trademark serial number.",
+      "assertions": [
+        { "type": "should_trigger", "value": true },
+        { "type": "output_contains", "value": "TSDR" },
+        { "type": "behavior", "value": "Looks up a trademark by serial number via TSDR and reports its status and any alerts." }
+      ]
+    },
+    {
+      "id": "patent-assignment-history",
+      "prompt": "Track the ownership/assignment history for patent 11234567 — who assigned it to whom and when?",
+      "expected_output": "Triggers the USPTO skill. Resolves the patent to its application via the ODP Patent File Wrapper, calls GET /api/v1/patent/applications/{app}/assignment (the old assignment-api.uspto.gov host no longer resolves), and reports assignmentRecordedDate, assignors, assignees, conveyanceText, and reel/frame for each recorded transfer.",
+      "assertions": [
+        { "type": "should_trigger", "value": true },
+        { "type": "behavior", "value": "Retrieves and parses patent assignment/ownership transfer records from the ODP Patent File Wrapper assignment endpoint." }
+      ]
+    },
+    {
+      "id": "near-miss-openalex",
+      "prompt": "Find me peer-reviewed academic papers on neural network pruning and their citation counts.",
+      "expected_output": "Should NOT trigger the USPTO skill. The user wants peer-reviewed scholarly papers and citation counts, which is scholarly-literature territory, not patent/trademark data. It should defer to the openalex database skill (alterlab-openalex) for academic papers and citations.",
+      "assertions": [
+        { "type": "should_not_trigger", "value": true },
+        { "type": "output_contains", "value": "openalex" }
+      ]
+    },
+    {
+      "id": "near-miss-pubchem",
+      "prompt": "Look up the chemical structure, SMILES, and molecular weight for the compound named in this patent — give me the PubChem CID.",
+      "expected_output": "Should NOT trigger the USPTO skill. Resolving a compound to its chemical structure, SMILES, molecular weight, and PubChem CID is chemical-database territory, not patent metadata. It should defer to the pubchem database skill (alterlab-pubchem).",
+      "assertions": [
+        { "type": "should_not_trigger", "value": true },
+        { "type": "output_contains", "value": "pubchem" }
+      ]
+    }
+  ]
+}

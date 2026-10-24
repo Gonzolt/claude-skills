@@ -1,0 +1,199 @@
+{
+  "skill_name": "dynamic-workflows",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "use a workflow to audit every route handler under src/routes/ for missing authentication checks, and adversarially verify each finding before reporting it. Write the workflow script you'd run as audit-routes.workflow.js.",
+      "expected_output": "A workflow script that discovers the route files (Scout-Worker), fans out one agent per file through a pipeline (not parallel) with schema-bound findings, then runs an adversarial-verify stage (independent skeptics voting) before returning only confirmed findings.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "audit-routes.workflow.js",
+          "pattern": "export const meta\\s*=\\s*\\{",
+          "description": "Script begins with the required meta block"
+        },
+        {
+          "type": "regex_match",
+          "file": "audit-routes.workflow.js",
+          "pattern": "pipeline\\(",
+          "description": "Uses pipeline() for the multi-file audit rather than a bare parallel()"
+        },
+        {
+          "type": "regex_match",
+          "file": "audit-routes.workflow.js",
+          "pattern": "schema\\s*:",
+          "description": "At least one agent() call is schema-bound"
+        },
+        {
+          "type": "regex_match",
+          "file": "audit-routes.workflow.js",
+          "pattern": "(?i)(refute|adversarial|skeptic|verify)",
+          "description": "Includes an adversarial verification stage"
+        },
+        {
+          "type": "regex_match",
+          "file": "audit-routes.workflow.js",
+          "pattern": "\\.filter\\(Boolean\\)",
+          "description": "Filters null results from dead/skipped agents before using them"
+        }
+      ],
+      "expectations": [
+        "Uses a Scout-Worker style first step (or equivalent glob/discovery) to enumerate route files rather than assuming a fixed list",
+        "Runs the per-file audits through pipeline(), not parallel(), since there's no cross-item dependency between files",
+        "The verification stage gives skeptics only the claim, not the finder's reasoning, and reports only findings that survive majority vote"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "use a workflow to migrate every component under src/components/ from styled-components to Tailwind, working on each file in its own isolated copy. Write the script as migrate-components.workflow.js.",
+      "expected_output": "A workflow script using Worktree Isolation (agent isolation: 'worktree') per file inside a pipeline, with a schema-bound scout step listing the files and a per-file transform-then-check stage.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "migrate-components.workflow.js",
+          "pattern": "isolation\\s*:\\s*['\"]worktree['\"]",
+          "description": "Uses worktree isolation for concurrent file writes"
+        },
+        {
+          "type": "regex_match",
+          "file": "migrate-components.workflow.js",
+          "pattern": "pipeline\\(",
+          "description": "Processes the file list as a pipeline"
+        },
+        {
+          "type": "regex_match",
+          "file": "migrate-components.workflow.js",
+          "pattern": "schema\\s*:",
+          "description": "Discovery/scout step is schema-bound"
+        }
+      ],
+      "expectations": [
+        "Explains (in comments or the accompanying explanation) that worktree isolation converts unsafe concurrent writes into N safe independent ones",
+        "Does not put a global parallel() barrier between the discovery step and the per-file migration step where a pipeline would do"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "use a workflow to run npx tsc --noEmit and keep fixing the reported errors until the type check passes or two rounds in a row make no progress. Write the script as fix-types.workflow.js.",
+      "expected_output": "A Converge-Until-Green workflow: alternates the tsc check (the oracle) with a fix stage, tracks whether error count is decreasing, and stops on success or on two consecutive no-progress rounds — never on a fixer's self-assessment.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "fix-types.workflow.js",
+          "pattern": "(?i)tsc",
+          "description": "References the tsc check as the oracle"
+        },
+        {
+          "type": "regex_match",
+          "file": "fix-types.workflow.js",
+          "pattern": "while\\s*\\(",
+          "description": "Uses a loop, not a single fixed pass"
+        },
+        {
+          "type": "regex_match",
+          "file": "fix-types.workflow.js",
+          "pattern": "(?i)(stall|no.?progress|noprogress)",
+          "description": "Tracks a stall/no-progress condition, not just a fixed round count"
+        }
+      ],
+      "expectations": [
+        "The stopping condition is either the check passing or two consecutive rounds with no reduction in error count — not an arbitrary fixed number of rounds and not the fixer agent's own claim that it's done",
+        "Re-runs tsc as the ground truth after every fix round rather than trusting the fixer's self-report"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "use a workflow to find flaky tests in this repo: run the suite repeatedly, record which tests fail intermittently, and stop once two rounds in a row find nothing new. Write the script as find-flaky.workflow.js.",
+      "expected_output": "A Loop-Until-Dry workflow with a Seen-Set Ledger keyed by test name/file, stopping after two consecutive rounds contribute no new flaky test, guarded so it cannot run unbounded.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "find-flaky.workflow.js",
+          "pattern": "(?i)(seen|Set\\()",
+          "description": "Maintains a seen-set / dedup ledger across rounds"
+        },
+        {
+          "type": "regex_match",
+          "file": "find-flaky.workflow.js",
+          "pattern": "while\\s*\\(",
+          "description": "Uses a round loop rather than a single fixed-size batch"
+        },
+        {
+          "type": "regex_match",
+          "file": "find-flaky.workflow.js",
+          "pattern": "(?i)dry",
+          "description": "Tracks consecutive empty/dry rounds as the stop condition"
+        }
+      ],
+      "expectations": [
+        "Stops on two consecutive rounds that surface nothing new, not a fixed round count",
+        "The dedup key is stable enough that a flaky test found in round 1 is recognized as already-seen in round 3, not re-counted as new"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I want a workflow that pauses partway through a big refactor so I can review and approve the plan before it touches any files. How should I structure that? Write your recommendation as mid-run-question.md.",
+      "expected_output": "mid-run-question.md explains that a workflow accepts no mid-run input — attempting to gate on human approval inside a single script is the Mid-Run Conversation anti-pattern — and that the correct structure is Phase-Gated Staging: one workflow that produces the plan as its return value, a human review turn in the conversation, then a second workflow invocation (fed the approved plan via args) that executes it.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "mid-run-question.md",
+          "pattern": "(?i)mid-run",
+          "description": "Names the Mid-Run Conversation anti-pattern or the no-mid-run-input constraint explicitly"
+        },
+        {
+          "type": "regex_match",
+          "file": "mid-run-question.md",
+          "pattern": "(?i)(separate workflow|phase-gated|two workflows|second workflow)",
+          "description": "Recommends splitting into separate workflow invocations rather than one script that waits"
+        },
+        {
+          "type": "regex_match",
+          "file": "mid-run-question.md",
+          "pattern": "(?i)args",
+          "description": "Mentions passing the approved plan forward via args"
+        }
+      ],
+      "expectations": [
+        "Explicitly states that only agent permission prompts can pause a run, and there is no way to gate execution on a human decision mid-script",
+        "Recommends the plan-producing workflow return a machine-usable artifact that the approved/edited version of gets passed as args to the execution workflow, not a vague 'add a checkpoint'"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Review this workflow script for problems before I run it:\n\n```javascript\nexport const meta = { name: 'review-pr', description: 'Review every changed file' }\nconst files = ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts']\nconst reviews = await parallel(files.map(f => () => agent(`Review ${f} for bugs`)))\nconst combined = reviews.join('\\n')\nconst final = await parallel([() => agent(`Summarize: ${combined}`)])\nreturn final[0]\n```\n\nWrite your review as workflow-review.md.",
+      "expected_output": "workflow-review.md identifies Barrier Abuse (the per-file parallel() should be a pipeline, since there's no cross-item dependency), Free-Text Parsing (agent() calls aren't schema-bound so 'combined' is unstructured prose), and the unnecessary single-item parallel() wrapping the summarizer, and proposes a corrected script.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "workflow-review.md",
+          "pattern": "(?i)barrier abuse",
+          "description": "Names the Barrier Abuse anti-pattern"
+        },
+        {
+          "type": "regex_match",
+          "file": "workflow-review.md",
+          "pattern": "(?i)(free-text|schema)",
+          "description": "Flags the missing schema / free-text handoff"
+        },
+        {
+          "type": "regex_match",
+          "file": "workflow-review.md",
+          "pattern": "pipeline\\(",
+          "description": "Proposes pipeline() as the fix for the per-file review step"
+        }
+      ],
+      "expectations": [
+        "Identifies that the per-file parallel() has no cross-item dependency and should be a pipeline instead",
+        "Flags that none of the agent() calls bind a schema, so 'combined' is unstructured prose being fed into another agent — the Free-Text Parsing anti-pattern",
+        "Notes that wrapping a single summarizer call in parallel([...]) is pointless — a bare agent() call would do"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-code-harness.local/schemas/acceptance-context.v1.schema.json",
+  "title": "acceptance-context.v1",
+  "description": "Acceptance Demo 用の context 構造体。harness-accept skill が Plan Brief 側 personal-preference.v1 と user_request_hash で join して組み立てる。",
+  "type": "object",
+  "required": [
+    "schema",
+    "user_request",
+    "user_request_hash",
+    "demo_artifacts",
+    "verified_criteria",
+    "unverified_caveats",
+    "past_issue_patterns",
+    "recommendation",
+    "recommendation_evidence",
+    "project",
+    "generated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "acceptance-context.v1"
+    },
+    "user_request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_request_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Plan Brief 側 personal-preference.v1.data.user_request_hash と join するキー"
+    },
+    "demo_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["video", "screenshot", "text"]
+          },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "verified_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "passed", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "evidence": {
+            "type": "string",
+            "description": "空文字列の場合 HTML 上で警告表示される (DoD c)"
+          }
+        }
+      }
+    },
+    "unverified_caveats": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "past_issue_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern_id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern_id": { "type": "string" },
+          "title": { "type": "string" },
+          "verified_in_current_task": { "type": "boolean" }
+        }
+      }
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": ["ship", "wait", "reject"]
+    },
+    "recommendation_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "verified_criteria_items": {
+      "type": "array",
+      "description": "Derived rendering helper for render-html.sh. Wraps verified_criteria with display attributes (status_label, evidence_warn 等). Compile / skill が populate。Optional: not required by canonical context.",
+      "items": {
+        "type": "object",
+        "required": ["name", "status_label"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "status_label": { "type": "string" },
+          "evidence": { "type": "string" },
+          "evidence_warn": { "type": "string" }
+        }
+      }
+    },
+    "recommendation_evidence_items": {
+      "type": "array",
+      "description": "Derived rendering helper for render-html.sh. Wraps recommendation_evidence string[] as [{text}].",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" }
+        }
+      }
+    },
+    "unverified_caveats_items": {
+      "type": "array",
+      "description": "Derived rendering helper for render-html.sh. Wraps unverified_caveats string[] as [{text}].",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" }
+        }
+      }
+    },
+    "blind_evaluation": {
+      "type": "object",
+      "description": "Optional (Phase 137.2, additive). Fresh fork 評価者 (rubric/合格ライン/途中経過なし) による第一印象。説得系/文書系の成果物のみ実行し、機能系タスクは applicable=false でスキップする。",
+      "required": ["applicable", "eligibility_reason"],
+      "additionalProperties": false,
+      "properties": {
+        "applicable": {
+          "type": "boolean",
+          "description": "Eligibility を満たし評価者を起動したか。false なら以下の evaluator_* / divergence は省略可"
+        },
+        "eligibility_reason": {
+          "type": "string",
+          "enum": ["persuasive-doc", "functional-skip", "not_applicable", "unavailable"]
+        },
+        "audience_purpose_line": {
+          "type": "string",
+          "description": "評価者に渡した読者/目的 1 行 (監査用にそのまま記録)"
+        },
+        "evaluator_believable": {
+          "type": "string",
+          "enum": ["believable", "not_believable", "uncertain"]
+        },
+        "evaluator_useful": {
+          "type": "string",
+          "enum": ["useful", "not_useful", "uncertain"]
+        },
+        "evaluator_friction_points": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "internal_recommendation": {
+          "type": "string",
+          "enum": ["ship", "wait", "reject"],
+          "description": "blind_evaluation 補正前の recommendation (pending 補正後・interim 値)"
+        },
+        "divergence": {
+          "type": "string",
+          "enum": ["none", "internal_high_evaluator_low", "internal_low_evaluator_high"]
+        },
+        "divergence_notes": { "type": "string" }
+      }
+    },
+    "blind_evaluation_items": {
+      "type": "array",
+      "description": "Derived rendering helper for render-html.sh. divergence != none のときだけ 0/1 件を populate する (Phase 137.2)。",
+      "items": {
+        "type": "object",
+        "required": ["divergence_label", "audience_purpose_line", "evaluator_believable", "evaluator_useful", "friction_points_text", "divergence_notes"],
+        "additionalProperties": false,
+        "properties": {
+          "divergence_label": { "type": "string" },
+          "audience_purpose_line": { "type": "string" },
+          "evaluator_believable": { "type": "string" },
+          "evaluator_useful": { "type": "string" },
+          "friction_points_text": { "type": "string" },
+          "divergence_notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

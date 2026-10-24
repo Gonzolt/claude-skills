@@ -1,0 +1,17 @@
+{
+  "operation_id": "getUserByScreenName",
+  "method": "get",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "screen_name": "openai"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ],
+  "operationId": "getUserByScreenName"
+}

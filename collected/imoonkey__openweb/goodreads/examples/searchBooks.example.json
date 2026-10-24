@@ -1,0 +1,15 @@
+{
+  "operation_id": "searchBooks",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "q": "dune"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

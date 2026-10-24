@@ -1,0 +1,15 @@
+{
+  "operation_id": "getHostProfile",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "hostId": "95592328"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

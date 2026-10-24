@@ -1,0 +1,235 @@
+openapi: '3.1.0'
+info:
+  title: eBay
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-09T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.ebay.com
+    x-openweb:
+      transport: page
+paths:
+  /sch/i.html:
+    get:
+      operationId: searchItems
+      summary: Search eBay items by keyword — title, price, condition, item ID
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: eb0001
+          signature_id: eb0001s
+          tool_version: 1
+          signals:
+            - dom
+        adapter:
+          name: ebay
+          operation: searchItems
+      parameters:
+        - name: keywords
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search keywords.
+          example: vintage watch
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination (1-indexed).
+          example: 1
+      responses:
+        '200':
+          description: Search results with item listings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resultCount, items]
+                properties:
+                  resultCount:
+                    type: integer
+                    description: Number of items returned on this page.
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      description: An eBay item listing from search results.
+                      required: [itemId, title]
+                      properties:
+                        itemId:
+                          type: string
+                          description: Numeric item ID for use with getItemDetail.
+                        title:
+                          type: string
+                          description: Item listing title.
+                        price:
+                          type: string
+                          description: 'Formatted price string (e.g. "$29.99").'
+                        condition:
+                          type: string
+                          description: 'Item condition (e.g. "Pre-Owned", "Brand New").'
+                        link:
+                          type: string
+                          description: Direct URL to the item page.
+
+  /itm/{itemId}:
+    get:
+      operationId: getItemDetail
+      summary: Get item detail — title, price, bids, condition, seller info, shipping, images
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: eb0002
+          signature_id: eb0002s
+          tool_version: 1
+          signals:
+            - ld_json
+            - dom
+        adapter:
+          name: ebay
+          operation: getItemDetail
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'eBay item ID (numeric, from searchItems results).'
+          example: '236736961938'
+      responses:
+        '200':
+          description: Item detail with structured data.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itemId, title]
+                properties:
+                  itemId:
+                    type: string
+                    description: The eBay item ID.
+                  title:
+                    type: string
+                    description: Item listing title.
+                  price:
+                    type: string
+                    description: 'Formatted price (e.g. "USD 29.99").'
+                  priceCurrency:
+                    type: string
+                    description: 'ISO currency code (e.g. "USD").'
+                  priceValue:
+                    type: string
+                    description: Numeric price value as string.
+                  condition:
+                    type: string
+                    description: 'Item condition (e.g. "NewCondition", "UsedCondition").'
+                  availability:
+                    type: string
+                    description: 'Availability status (e.g. "InStock").'
+                  image:
+                    type: string
+                    description: Primary item image URL.
+                  images:
+                    type: array
+                    items:
+                      type: string
+                    description: Item image URLs (up to 5).
+                  seller:
+                    type: object
+                    description: Seller information extracted from the seller card.
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        description: Seller display name.
+                      feedbackScore:
+                        type: string
+                        description: Seller feedback score text.
+                      positivePercent:
+                        type: string
+                        description: 'Positive feedback percentage (e.g. "99.8% positive feedback").'
+                      storeSlug:
+                        type: string
+                        description: Seller store slug for use with getSellerProfile.
+                  shipping:
+                    type: string
+                    description: Shipping cost or method text.
+                  bids:
+                    type: string
+                    description: Number of bids (auction items only).
+                  returns:
+                    type: string
+                    description: Return policy text.
+                  brand:
+                    type: string
+                    description: Product brand name (from LD+JSON when available).
+                  model:
+                    type: string
+                    description: Product model name (from LD+JSON when available).
+
+  /str/{username}:
+    get:
+      operationId: getSellerProfile
+      summary: Get seller profile — store name, positive feedback %, items sold, followers, categories
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: eb0003
+          signature_id: eb0003s
+          tool_version: 1
+          signals:
+            - dom
+        adapter:
+          name: ebay
+          operation: getSellerProfile
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Seller store slug from item detail seller.storeSlug.
+          example: freegeekportland
+      responses:
+        '200':
+          description: Seller profile with store info.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username, storeName]
+                properties:
+                  username:
+                    type: string
+                    description: Seller store slug.
+                  storeName:
+                    type: string
+                    description: Display name of the seller store.
+                  logoUrl:
+                    type: string
+                    description: Store logo image URL.
+                  positiveFeedback:
+                    type: string
+                    description: 'Positive feedback percentage (e.g. "99.8%").'
+                  itemsSold:
+                    type: string
+                    description: 'Total items sold (e.g. "59K").'
+                  followers:
+                    type: string
+                    description: 'Number of followers (e.g. "11K").'
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                    description: Store category names (up to 5).
+                  storeUrl:
+                    type: string
+                    description: Full URL to the seller store page.

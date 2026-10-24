@@ -1,0 +1,456 @@
+openapi: '3.1.0'
+info:
+  title: Booking.com
+  version: '1.1.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-01T00:00:00Z'
+    requires_auth: false
+servers:
+- url: https://www.booking.com
+  x-openweb:
+    transport: page
+    page_plan:
+      warm: true
+paths:
+  /searchresults.html:
+    get:
+      operationId: searchHotels
+      summary: Search hotels by destination — names, prices, ratings, review counts, distances
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: bk0001
+          signature_id: bk0001s
+          tool_version: 1
+          signals:
+          - adapter-verified
+        adapter:
+          name: booking
+          operation: searchHotels
+      parameters:
+      - name: ss
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Destination search query (e.g. "New York", "Paris", "Tokyo").
+      - name: checkin
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Check-in date in YYYY-MM-DD format.
+      - name: checkout
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Check-out date in YYYY-MM-DD format.
+      - name: group_adults
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 2
+        description: Number of adult guests.
+      - name: no_rooms
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Number of rooms.
+      responses:
+        '200':
+          description: List of hotels matching the search.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, hotels]
+                properties:
+                  count:
+                    type: integer
+                  hotels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        url:
+                          type: string
+                        price:
+                          type: [string, 'null']
+                          description: Price per night (e.g. "$305").
+                        rating:
+                          type: [string, 'null']
+                          description: Review score out of 10 (e.g. "8.9").
+                        ratingText:
+                          type: [string, 'null']
+                          description: Rating label (e.g. "Excellent", "Very Good").
+                        reviewCount:
+                          type: [string, 'null']
+                        distance:
+                          type: [string, 'null']
+                          description: Distance from downtown.
+
+  /hotel/{country}/{slug}.html:
+    get:
+      operationId: getHotelDetail
+      summary: Get hotel details — raw schema.org Hotel LD+JSON block (name, aggregateRating, address, image, priceRange)
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: bk0002
+          signature_id: bk0002s
+          tool_version: 2
+          signals:
+          - script_json
+        extraction:
+          type: script_json
+          selector: script[type="application/ld+json"]
+          type_filter: Hotel
+        page_plan:
+          entry_url: https://www.booking.com/hotel/{country}/{slug}.en-us.html?lang=en-us
+          ready: 'script[type="application/ld+json"]'
+          wait_until: domcontentloaded
+      parameters:
+      - name: country
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Country code (e.g. "us", "gb", "fr").
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Hotel URL slug (e.g. "riverside-tower").
+      - name: checkin
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Check-in date in YYYY-MM-DD format.
+      - name: checkout
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Check-out date in YYYY-MM-DD format.
+      responses:
+        '200':
+          description: Raw schema.org Hotel LD+JSON object from the hotel detail page.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: schema.org/Hotel JSON-LD — fields mirror the wire shape exactly (no runtime reshape).
+                properties:
+                  '@context':
+                    type: [string, 'null']
+                  '@type':
+                    type: [string, 'null']
+                    description: Always "Hotel".
+                  name:
+                    type: [string, 'null']
+                  description:
+                    type: [string, 'null']
+                  url:
+                    type: [string, 'null']
+                  image:
+                    description: Main hotel image URL (string) or array of URLs.
+                  priceRange:
+                    type: [string, 'null']
+                  telephone:
+                    type: [string, 'null']
+                  aggregateRating:
+                    type: [object, 'null']
+                    description: Aggregate review score (out of 10 on Booking.com).
+                    properties:
+                      '@type':
+                        type: [string, 'null']
+                      ratingValue:
+                        type: [number, string, 'null']
+                      reviewCount:
+                        type: [integer, string, 'null']
+                      bestRating:
+                        type: [number, string, 'null']
+                      worstRating:
+                        type: [number, string, 'null']
+                  address:
+                    type: [object, 'null']
+                    description: schema.org/PostalAddress.
+                    properties:
+                      '@type':
+                        type: [string, 'null']
+                      streetAddress:
+                        type: [string, 'null']
+                      addressLocality:
+                        type: [string, 'null']
+                      addressRegion:
+                        type: [string, 'null']
+                      postalCode:
+                        type: [string, 'null']
+                      addressCountry:
+                        type: [string, 'null']
+
+  /internal/getHotelReviews:
+    get:
+      operationId: getHotelReviews
+      summary: Get hotel review summary — overall score, category subscores, featured review quotes
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: bk0003
+          signature_id: bk0003s
+          tool_version: 1
+          signals:
+          - adapter-verified
+        adapter:
+          name: booking
+          operation: getHotelReviews
+        page_plan:
+          entry_url: https://www.booking.com/hotel/{country}/{slug}.en-us.html?lang=en-us
+          ready: '[data-testid="review-score-component"], script'
+          wait_until: load
+      parameters:
+      - name: country
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Country code from the hotel URL (e.g. "us", "es", "mx").
+      - name: slug
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Hotel URL slug (e.g. "riverside-tower").
+      responses:
+        '200':
+          description: Review summary extracted from the hotel page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score:
+                    type: [string, 'null']
+                    description: Overall score out of 10 (e.g. "8.9").
+                  reviewCount:
+                    type: [string, 'null']
+                  subscores:
+                    type: [object, 'null']
+                    description: Category scores by dimension.
+                    properties:
+                      staff:
+                        type: [string, 'null']
+                      facilities:
+                        type: [string, 'null']
+                      cleanliness:
+                        type: [string, 'null']
+                      comfort:
+                        type: [string, 'null']
+                      value_for_money:
+                        type: [string, 'null']
+                      location:
+                        type: [string, 'null']
+                      free_wifi:
+                        type: [string, 'null']
+                  featured:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text:
+                          type: [string, 'null']
+                        author:
+                          type: [string, 'null']
+                        country:
+                          type: [string, 'null']
+                required:
+                - featured
+
+  /internal/getHotelPrices:
+    get:
+      operationId: getHotelPrices
+      summary: Get available room types with pricing — names, beds, sizes, facilities, prices
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: bk0004
+          signature_id: bk0004s
+          tool_version: 1
+          signals:
+          - adapter-verified
+        adapter:
+          name: booking
+          operation: getHotelPrices
+        page_plan:
+          entry_url: https://www.booking.com/hotel/{country}/{slug}.en-us.html?lang=en-us
+          ready: 'table.hprt-table, script'
+          wait_until: load
+      parameters:
+      - name: country
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Country code from the hotel URL (e.g. "us", "es", "mx").
+      - name: slug
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Hotel URL slug (e.g. "riverside-tower").
+      responses:
+        '200':
+          description: Room types and pricing from the availability table.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, rooms]
+                properties:
+                  count:
+                    type: integer
+                  rooms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        bed:
+                          type: [string, 'null']
+                        size:
+                          type: [string, 'null']
+                        facilities:
+                          type: array
+                          items:
+                            type: string
+                        price:
+                          type: [string, 'null']
+                          description: Total price for the stay.
+                        perNight:
+                          type: [string, 'null']
+                          description: Price per night.
+
+  /flights/{route}/:
+    get:
+      operationId: searchFlights
+      summary: Search flights by route — carriers, times, duration, stops, prices
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: bk0005
+          signature_id: bk0005s
+          tool_version: 1
+          signals:
+          - adapter-verified
+        adapter:
+          name: booking
+          operation: searchFlights
+      parameters:
+      - name: route
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Flight route as "FROM-TO" IATA city codes (e.g. "NYC-PAR", "LON-BER").
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ONEWAY
+          enum: [ONEWAY, ROUNDTRIP]
+        description: Trip type.
+      - name: depart
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Departure date in YYYY-MM-DD format.
+      - name: return
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Return date in YYYY-MM-DD format (for ROUNDTRIP).
+      - name: adults
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Number of adult passengers.
+      - name: cabinClass
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ECONOMY
+          enum: [ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST]
+        description: Cabin class.
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Origin as IATA.CITY code (e.g. "NYC.CITY").
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Destination as IATA.CITY code (e.g. "PAR.CITY").
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: BEST
+          enum: [BEST, CHEAPEST, FASTEST]
+        description: Sort order.
+      responses:
+        '200':
+          description: List of flights matching the search.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, flights]
+                properties:
+                  count:
+                    type: integer
+                  flights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        carrier:
+                          type: [string, 'null']
+                        departureTime:
+                          type: [string, 'null']
+                        arrivalTime:
+                          type: [string, 'null']
+                        departureAirport:
+                          type: [string, 'null']
+                        arrivalAirport:
+                          type: [string, 'null']
+                        duration:
+                          type: [string, 'null']
+                        stops:
+                          type: [string, 'null']
+                        price:
+                          type: [string, 'null']

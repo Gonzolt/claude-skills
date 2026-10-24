@@ -1,0 +1,7 @@
+{
+  "operation_id": "getSearchSuggestions",
+  "cases": [{
+    "input": { "term": "tech", "l": "en-US" },
+    "assertions": { "status": 200, "response_schema_valid": true }
+  }]
+}

@@ -1,0 +1,19 @@
+{
+  "operation_id": "reply",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "order": 17,
+  "cases": [
+    {
+      "input": {
+        "tweet_id": "${prev.createTweet.create_tweet.tweet_results.result.rest_id}",
+        "text": "OpenWeb verify reply ${now}"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ],
+  "operationId": "reply"
+}

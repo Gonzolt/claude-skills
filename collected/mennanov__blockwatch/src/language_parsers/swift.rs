@@ -1,0 +1,91 @@
+use crate::language_parsers::{
+    CommentsParser, LanguageParser, LanguageParserImpl,
+    c_style_and_doc_line_and_block_comments_parser,
+};
+
+/// Returns a [`LanguageParser`] for Swift.
+pub(super) fn parser() -> anyhow::Result<impl LanguageParser> {
+    Ok(LanguageParserImpl::new(comments_parser()?))
+}
+
+fn comments_parser() -> anyhow::Result<impl CommentsParser> {
+    let swift_language = tree_sitter_swift::LANGUAGE.into();
+    let parser = c_style_and_doc_line_and_block_comments_parser(
+        &swift_language,
+        "comment",
+        "multiline_comment",
+    )?;
+    Ok(parser)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Position, language_parsers::Comment};
+
+    #[test]
+    fn parses_swift_comments_correctly() -> anyhow::Result<()> {
+        let mut comments_parser = comments_parser()?;
+
+        let blocks: Vec<Comment> = comments_parser
+            .parse(
+                r#"
+            // This is a single-line comment in Swift.
+            import Foundation
+    
+            /*
+             * This is a multi-line comment.
+             * It spans multiple lines in Swift.
+             */
+    
+            func main() {
+                print("Hello, Swift!") // Prints a message to the console.
+    
+                /* Another comment
+                 * split into
+                 * multiple lines.
+                 */
+                 
+                return
+            }
+            /// A documentation comment.
+            "#,
+            )
+            .collect();
+
+        assert_eq!(
+            blocks,
+            vec![
+                Comment {
+                    position_range: Position::new(2, 13)..Position::new(2, 55),
+                    source_range: 13..55,
+                    comment_text: "   This is a single-line comment in Swift.".to_string()
+                },
+                Comment {
+                    position_range: Position::new(5, 13)..Position::new(8, 16),
+                    source_range: 103..215,
+                    comment_text:
+                        "  \n               This is a multi-line comment.\n               It spans multiple lines in Swift.\n               "
+                            .to_string()
+                },
+                Comment {
+                    position_range: Position::new(11, 40)..Position::new(11, 75),
+                    source_range: 286..321,
+                    comment_text: "   Prints a message to the console.".to_string()
+                },
+                Comment {
+                    position_range: Position::new(13, 17)..Position::new(16, 20),
+                    source_range: 343..446,
+                    comment_text: "   Another comment\n                   split into\n                   multiple lines.\n                   ".to_string()
+                },
+                Comment {
+                    position_range: Position::new(20, 13)..Position::new(20, 41),
+                    source_range: 514..542,
+                    comment_text: "    A documentation comment.".to_string()
+                }
+            ]
+        );
+
+        Ok(())
+    }
+}

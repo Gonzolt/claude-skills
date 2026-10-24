@@ -1,0 +1,783 @@
+openapi: 3.1.0
+info:
+  title: pinterest
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-04-01T23:48:05.685000Z
+    requires_auth: true
+servers:
+- url: https://www.pinterest.com
+  x-openweb:
+    transport: page
+    auth:
+      type: cookie_session
+    csrf:
+      type: cookie_to_header
+      cookie: csrftoken
+      header: x-csrftoken
+      scope: [POST, PUT, DELETE]
+paths:
+  /resource/BaseSearchResource/get/:
+    get:
+      operationId: searchPins
+      summary: "Search pins by keyword — returns pin images, titles, links, board info, pinner info"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: searchPins
+        build:
+          stable_id: pinterest_searchPins_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+          default: /search/pins/?q=cats
+        description: "Source URL path for the request context"
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with search options. Example: {"options":{"query":"cats","scope":"pins","page_size":25},"context":{}}'
+        example: '{"options":{"query":"cats","scope":"pins","page_size":25},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        grid_title:
+                          type: string
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        link:
+                          type: string
+                          nullable: true
+                        domain:
+                          type: string
+                        images:
+                          type: object
+                        dominant_color:
+                          type: string
+                        pinner:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            username:
+                              type: string
+                            full_name:
+                              type: string
+                        board:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            url:
+                              type: string
+                        created_at:
+                          type: string
+                        is_video:
+                          type: boolean
+                  bookmark:
+                    type: string
+                    nullable: true
+                required:
+                - results
+  /resource/PinResource/get/:
+    get:
+      operationId: getPin
+      summary: "Get pin details — image, title, description, link, board, pinner, comments, related pins"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: getPin
+        build:
+          stable_id: pinterest_getPin_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Source URL path, e.g. /pin/12345/"
+        example: /pin/12345/
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with pin options. Example: {"options":{"id":"12345","field_set_key":"detailed"},"context":{}}'
+        example: '{"options":{"id":"12345","field_set_key":"detailed"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  type:
+                    type: string
+                  title:
+                    type: string
+                  grid_title:
+                    type: string
+                  description:
+                    type: string
+                  link:
+                    type: string
+                    nullable: true
+                  domain:
+                    type: string
+                  images:
+                    type: object
+                  dominant_color:
+                    type: string
+                  pinner:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      username:
+                        type: string
+                      full_name:
+                        type: string
+                  board:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      url:
+                        type: string
+                  repin_count:
+                    type: integer
+                  comment_count:
+                    type: integer
+                  share_count:
+                    type: integer
+                  reaction_counts:
+                    type: object
+                  created_at:
+                    type: string
+                  is_video:
+                    type: boolean
+                  category:
+                    type: string
+                required:
+                - id
+  /resource/BoardResource/get/:
+    get:
+      operationId: getBoard
+      summary: "Get board details — name, description, pin count, follower count, owner, cover images"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: getBoard
+        build:
+          stable_id: pinterest_getBoard_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Source URL path, e.g. /username/board-name/"
+        example: /WhoWhatWear/travel/
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with board options. Requires username and slug as separate fields. Example: {"options":{"username":"WhoWhatWear","slug":"travel","field_set_key":"detailed"},"context":{}}'
+        example: '{"options":{"username":"WhoWhatWear","slug":"travel","field_set_key":"detailed"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    type: string
+                  url:
+                    type: string
+                  pin_count:
+                    type: integer
+                  follower_count:
+                    type: integer
+                  section_count:
+                    type: integer
+                  collaborator_count:
+                    type: integer
+                  is_collaborative:
+                    type: boolean
+                  privacy:
+                    type: string
+                  image_cover_url:
+                    type: string
+                  owner:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      username:
+                        type: string
+                      full_name:
+                        type: string
+                required:
+                - id
+  /resource/UserResource/get/:
+    get:
+      operationId: getUserProfile
+      summary: "Get user profile — username, full name, bio, follower/following counts, pin count, boards"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: getUserProfile
+        build:
+          stable_id: pinterest_getUserProfile_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+        description: "Source URL path, e.g. /username/"
+        example: /pinterest/
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with user options. Use username OR user_id. Example: {"options":{"username":"pinterest","field_set_key":"profile"},"context":{}}'
+        example: '{"options":{"username":"pinterest","field_set_key":"profile"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  username:
+                    type: string
+                  full_name:
+                    type: string
+                  about:
+                    type: string
+                  follower_count:
+                    type: integer
+                  following_count:
+                    type: integer
+                  pin_count:
+                    type: integer
+                  board_count:
+                    type: integer
+                  image_medium_url:
+                    type: string
+                  website_url:
+                    type: string
+                  domain_url:
+                    type: string
+                  is_verified_merchant:
+                    type: boolean
+                required:
+                - id
+  /resource/AdvancedTypeaheadResource/get/:
+    get:
+      operationId: searchTypeahead
+      summary: "Search typeahead suggestions — returns pin, board, and user suggestions as you type"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: searchTypeahead
+        build:
+          stable_id: pinterest_searchTypeahead_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL path"
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with typeahead options. Example: {"options":{"term":"cats","count":5},"context":{}}'
+        example: '{"options":{"term":"cats","count":5},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        label:
+                          type: string
+                        id:
+                          type: string
+                        query:
+                          type: string
+                        url:
+                          type: string
+                required:
+                - items
+  /resource/RepinResource/create/:
+    post:
+      operationId: savePin
+      summary: "Save (repin) a pin to one of your boards — requires authenticated session"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: pinterest_savePin_v1
+          tool_version: 2
+      parameters:
+      - name: x-requested-with
+        in: header
+        required: true
+        schema:
+          type: string
+          const: XMLHttpRequest
+      - name: x-pinterest-appstate
+        in: header
+        required: true
+        schema:
+          type: string
+          const: active
+      - name: x-pinterest-source-url
+        in: header
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL for Pinterest tracking"
+      - name: accept
+        in: header
+        required: true
+        schema:
+          type: string
+          const: "application/json, text/javascript, */*, q=0.01"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - source_url
+              - data
+              properties:
+                source_url:
+                  type: string
+                  default: /
+                  description: "Source URL path for the request context (e.g. / or /pin/{pin_id}/)"
+                data:
+                  type: string
+                  description: 'JSON string wrapping options. Example: {"options":{"pin_id":"PIN","board_id":"BOARD"},"context":{}}. Optional section_id for board sections.'
+                  example: '{"options":{"pin_id":"1149473504911636509","board_id":"549755714253","section_id":null},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource_response:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          board:
+                            type: object
+                          pinner:
+                            type: object
+
+  /resource/PinResource/delete/:
+    post:
+      operationId: unsavePin
+      summary: "Unsave (remove) a saved pin from a board — requires authenticated session"
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: pinterest_unsavePin_v1
+          tool_version: 2
+      parameters:
+      - name: x-requested-with
+        in: header
+        required: true
+        schema:
+          type: string
+          const: XMLHttpRequest
+      - name: x-pinterest-appstate
+        in: header
+        required: true
+        schema:
+          type: string
+          const: active
+      - name: x-pinterest-source-url
+        in: header
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL for Pinterest tracking"
+      - name: accept
+        in: header
+        required: true
+        schema:
+          type: string
+          const: "application/json, text/javascript, */*, q=0.01"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - source_url
+              - data
+              properties:
+                source_url:
+                  type: string
+                  default: /
+                  description: "Source URL path for context (e.g. / or /pin/{pin_id}/)"
+                data:
+                  type: string
+                  description: 'JSON string wrapping options. The id field is the saved-pin (repin) id from savePin response, NOT the original pin_id. Example: {"options":{"id":"REPIN_ID","board_id":"BOARD"},"context":{}}'
+                  example: '{"options":{"id":"1149473504911636509","board_id":"549755714253"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource_response:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+
+  /resource/ApiResource/update/:
+    post:
+      operationId: followBoard
+      summary: "Follow a board — requires authenticated session. Pinterest deprecated /resource/BoardFollowingResource/; the modern client wraps a v3 REST call (/v3/boards/{board_id}/follow/) inside ApiResource/update/."
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: pinterest_followBoard_v2
+          tool_version: 2
+      parameters:
+      - name: x-requested-with
+        in: header
+        required: true
+        schema:
+          type: string
+          const: XMLHttpRequest
+      - name: x-pinterest-appstate
+        in: header
+        required: true
+        schema:
+          type: string
+          const: active
+      - name: x-pinterest-source-url
+        in: header
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL for Pinterest tracking (typically the board's URL path)"
+      - name: accept
+        in: header
+        required: true
+        schema:
+          type: string
+          const: "application/json, text/javascript, */*, q=0.01"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - source_url
+              - data
+              properties:
+                source_url:
+                  type: string
+                  default: /
+                  description: "Source URL path for context (e.g. /username/board-slug/)"
+                data:
+                  type: string
+                  description: 'JSON string wrapping the wrapped v3 REST URL. Example: {"options":{"url":"/v3/boards/<BOARD_ID>/follow/"},"context":{}}'
+                  example: '{"options":{"url":"/v3/boards/32088284783993002/follow/"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource_response:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+
+  /resource/ApiResource/delete/:
+    post:
+      operationId: unfollowBoard
+      summary: "Unfollow a board — requires authenticated session. Pinterest deprecated /resource/BoardFollowingResource/; modern client wraps a v3 REST call (/v3/boards/{board_id}/follow/) inside ApiResource/delete/."
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: pinterest_unfollowBoard_v2
+          tool_version: 2
+      parameters:
+      - name: x-requested-with
+        in: header
+        required: true
+        schema:
+          type: string
+          const: XMLHttpRequest
+      - name: x-pinterest-appstate
+        in: header
+        required: true
+        schema:
+          type: string
+          const: active
+      - name: x-pinterest-source-url
+        in: header
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL for Pinterest tracking (typically the board's URL path)"
+      - name: accept
+        in: header
+        required: true
+        schema:
+          type: string
+          const: "application/json, text/javascript, */*, q=0.01"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - source_url
+              - data
+              properties:
+                source_url:
+                  type: string
+                  default: /
+                  description: "Source URL path for context"
+                data:
+                  type: string
+                  description: 'JSON string wrapping the wrapped v3 REST URL. Example: {"options":{"url":"/v3/boards/<BOARD_ID>/follow/"},"context":{}}'
+                  example: '{"options":{"url":"/v3/boards/32088284783993002/follow/"},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource_response:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+
+  /resource/UserHomefeedResource/get/:
+    get:
+      operationId: getHomeFeed
+      summary: "Get personalized home feed — returns recommended pins based on user interests"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: getHomeFeed
+        build:
+          stable_id: pinterest_getHomeFeed_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+          default: /
+        description: "Source URL path"
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with feed options. Example: {"options":{"field_set_key":"hifi","in_nux":false,"prependPartner":false,"page_size":25},"context":{}}'
+        example: '{"options":{"field_set_key":"hifi","in_nux":false,"prependPartner":false,"page_size":25},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pins:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          nullable: true
+                        title:
+                          type: string
+                          nullable: true
+                        image_url:
+                          type: string
+                          nullable: true
+                        auto_alt_text:
+                          type: string
+                          nullable: true
+                        is_video:
+                          type: boolean
+                  bookmark:
+                    type: string
+                    nullable: true
+                required:
+                - pins
+  /resource/NewsHubResource/get/:
+    get:
+      operationId: getNotifications
+      summary: "Get notification feed — recent activity like repins, follows, comments on your pins"
+      x-openweb:
+        permission: read
+        adapter:
+          name: pinterest-api
+          operation: getNotifications
+        build:
+          stable_id: pinterest_getNotifications_v1
+          tool_version: 2
+      parameters:
+      - name: source_url
+        in: query
+        required: true
+        schema:
+          type: string
+          default: /notifications/
+        description: "Source URL path"
+      - name: data
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 'JSON string with notification options. Example: {"options":{"field_set_key":"default","page_size":25},"context":{}}'
+        example: '{"options":{"field_set_key":"default","page_size":25},"context":{}}'
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        category:
+                          type: string
+                        header_text:
+                          type: string
+                        unread:
+                          type: boolean
+                        last_updated_at:
+                          type: string
+                        content_items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              event_type:
+                                type: integer
+                              last_updated_at:
+                                type: string
+                              content_object:
+                                type: object
+                  bookmark:
+                    type: string
+                    nullable: true
+                required:
+                - notifications

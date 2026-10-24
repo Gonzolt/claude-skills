@@ -1,0 +1,18 @@
+{
+  "operation_id": "addReaction",
+  "method": "put",
+  "replay_safety": "unsafe_mutation",
+  "order": 1,
+  "cases": [
+    {
+      "input": {
+        "channelId": "1280234300012494862",
+        "messageId": "1495202167496114316",
+        "emoji": "👍"
+      },
+      "assertions": {
+        "status": 204
+      }
+    }
+  ]
+}

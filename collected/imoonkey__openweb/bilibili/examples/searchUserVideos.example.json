@@ -1,0 +1,21 @@
+{
+  "operation_id": "searchUserVideos",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "index": 1,
+        "mid": 1,
+        "order": "pubdate",
+        "order_avoided": "true",
+        "platform": "web",
+        "pn": 1,
+        "ps": 1
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

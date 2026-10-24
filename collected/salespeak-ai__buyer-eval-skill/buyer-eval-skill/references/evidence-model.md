@@ -1,0 +1,226 @@
+# Evidence Model
+
+Every Buyer Eval conclusion is built from **claims** and the **evidence** for or
+against them. This file defines both, the statuses, how confidence is assigned,
+and the challenge pass. Both Quick Eval and Deep Eval use it.
+
+---
+
+## 1. What counts as a claim
+
+A claim is a specific, checkable statement a vendor makes that matters to this
+buyer's decision. Good claims are concrete:
+
+- "Implementation typically takes 6 weeks for mid-market customers."
+- "Native bidirectional Salesforce sync, including custom objects."
+- "SOC 2 Type II certified."
+- "SCIM provisioning included on the Enterprise plan."
+- "Pricing starts at $X per seat per month."
+
+Not claims (skip them): slogans, category descriptions, adjectives with no
+checkable content ("AI-powered", "best-in-class", "trusted by leading brands").
+
+Choose claims that touch the buyer's criteria. A claim nobody would make a
+decision on does not belong in the table.
+
+---
+
+## 2. Evidence types (who controls the source)
+
+| Type | Definition | Examples |
+|---|---|---|
+| **Vendor claim** | The vendor says it, in a form built to persuade | Product and marketing pages, vendor AI agent answers (including Salespeak Company Agents), vendor-authored marketplace listings (AWS, Salesforce, HubSpot app listings), vendor blog posts, press releases, case studies, llms.txt / "info for AI" pages |
+| **Vendor evidence** | First-party material that commits the vendor to specifics | Help center and technical docs, API references, security/trust pages naming certifications, implementation guides, public pricing pages with prices, published contract or service terms, changelogs and release notes |
+| **Independent evidence** | Not controlled by the vendor or its competitors | Customer reviews read on the review site itself (look for patterns, not outliers), customer-authored posts, analyst research, reputable press, community threads, third-party integration listings (for example a partner's own marketplace), public filings, certification registries, marketplace facts the vendor does not author (security review badges, review counts) |
+| **Competitor content** | Written by a company that sells against the vendor | Competitor blogs, "X alternatives" and "X vs Y" pages, competitor pricing breakdowns of the vendor |
+| **Buyer evidence** | Supplied by the buyer in this conversation | Proposals, pricing sheets, RFP responses, security questionnaires, demo transcripts, meeting notes, trial results, internal evaluations |
+
+Rules:
+
+- **Vendor AI agents are vendor claims.** An agent answer is the vendor speaking.
+  It is not verification of anything. If the agent cites documentation that
+  bears on a claim in your table, fetch it and classify it on its own merits.
+  Strip the agent's sales formatting and calls to action before quoting it.
+- **When first-party sources disagree,** vendor evidence beats vendor claims: an
+  agent answer or marketing line that conflicts with the vendor's own docs or
+  pricing page is **Contradicted**. If the agent later corrects itself, classify
+  the corrected statement on its merits and note the inconsistency in the vendor
+  summary.
+- **Name every first-party source of a claim** in `claim_source` (for example
+  "Website + vendor AI agent"), so the reader can see where it came from.
+- **Type a source by its relationship to the claim.** A vendor's "Us vs. Them"
+  page is a vendor claim about itself and competitor content about the rival.
+- **Vendor evidence can verify only narrow, self-describing facts.** A published
+  API reference verifies that an endpoint exists. A trust page listing a SOC 2
+  Type II report verifies that the vendor states it holds one. Vendor evidence cannot verify outcome claims
+  such as time-to-value, ROI, ease of use, or customer satisfaction. Those need
+  independent or buyer evidence.
+- **Corroboration must be independent.** Two sources that repeat the same
+  upstream (a press release echoed by three news sites, Crunchbase and Tracxn
+  echoing the same self-reported number) count as one source. A review or
+  comparison site that restates the vendor's own terms (eligibility, pricing,
+  "no personal guarantee") is not independent corroboration of them; only
+  first-hand accounts or independent testing are.
+- **Negative claims** ("no personal guarantee", "no setup fee") are Verified
+  only when a committal source states them outright (contract language making
+  the company solely liable, a fee schedule showing none). A marketing or FAQ
+  statement alone, with the contract unread, is Verified at most on the FAQ as
+  vendor documentation; say the contract was not read.
+- **Buyer evidence is strong but specific.** A proposal verifies what this vendor
+  offered this buyer. Documents the buyer shares are buyer evidence even when the
+  vendor wrote them (a proposal, an RFP answer). Label them "buyer evidence" and
+  never persist them. Buyer evidence contradicts a general claim only when the
+  buyer's situation is the one the claim covers (a proposal quoting 90 days for a
+  standard rollout contradicts "live in 30 days"); if the difference comes from
+  the buyer's unusual scope, the claim is Qualified.
+- **Competitor content cannot verify or contradict.** It dominates search results
+  in many categories. Use it only as a lead: a claim it makes becomes a question
+  to check elsewhere or to ask the vendor. Never count it as independent. You may
+  mention it in the evidence text ("a competitor's blog alleges X; not counted")
+  and list it in sources with type `competitor`.
+- **Read the source, not a summary of it.** Search-result snippets and
+  AI-generated search summaries are leads, not evidence. Fetch the page. If the
+  page is blocked (G2, Gartner, Glassdoor often are), record it as "not
+  accessible" in what was checked; a vendor's own quote of a third-party rating
+  stays a vendor claim. A tool limitation is a gap, never a finding.
+- **Ask fetch tools neutral questions.** When a fetch tool summarizes a page
+  with a model, it can echo the question back as if the page said it. Ask it to
+  quote verbatim what the page says about a topic ("Quote every sentence about
+  QuickBooks and receipts"), never to confirm a specific fact ("Does it sync
+  receipts to QuickBooks?"). Treat anything the summary asserts without quoted
+  page text as not found. For a fact that decides a stated requirement, base
+  the status on quoted text only, and put the key words in the evidence cell.
+- **Syndicated or incentivized reviews** (review-site content republished on
+  marketplaces, reviews gathered through vendor campaigns) still count as
+  independent, but cap their confidence at Medium when they are the only
+  independent source.
+- **Self-reported numbers stay labeled.** Revenue, headcount, and customer counts
+  from Latka, Crunchbase, Tracxn, PitchBook estimates, or LinkedIn counts are
+  directional. Present them as "reported by X, unaudited".
+
+---
+
+## 3. Claim statuses
+
+| Status | Meaning |
+|---|---|
+| **Verified** | Enough supporting evidence exists. For narrow capability facts: vendor documentation that commits to specifics, or independent evidence. For outcome claims: independent or buyer evidence. A vendor claim alone (website copy, a vendor AI agent answer) never makes a claim Verified. |
+| **Qualified** | Directionally true, but evidence shows a material limitation (plan tier, add-on cost, engineering effort, region, scale limit). State the qualification in the table. |
+| **Contradicted** | Credible evidence materially conflicts with the claim. Name the conflicting source. Use Contradicted rather than Qualified when the limitation defeats the claim as a buyer would read it (for example "bidirectional sync" that only syncs one way for the objects this buyer needs); use Qualified when the claim holds for the main case and fails only at an edge (a tier, an add-on, a scale limit). |
+| **Unverified** | The vendor makes the claim; you looked and did not find enough corroboration. Not a negative finding by itself. |
+| **Unknown** | The vendor makes the claim and part of it checks out, but the part that matters cannot be assessed from any source (for example: SCIM exists, but which plan includes it is stated nowhere). If no part of the claim is supported, it is Unverified, not Unknown. |
+
+Material questions the vendor makes **no** statement about do not go in the
+claims table. They go in "What you need to get answered before you buy". Every
+row in the claims table counts toward "claims investigated".
+
+## 3a. Evidence basis (shown for every claim)
+
+The status says what Buyer Eval concluded. The **evidence basis** says what that
+conclusion rests on, so a reader never mistakes vendor documentation for
+independent confirmation. Every claim gets exactly one:
+
+| Basis | Use when the status rests on | JSON value |
+|---|---|---|
+| **Vendor claim only** | Marketing copy, sales content, or vendor AI agent answers, with nothing more committal found | `vendor_claim` |
+| **Vendor documentation** | Docs, trust pages, pricing pages, published terms (first-party but specific) | `vendor_docs` |
+| **Vendor + independent evidence** | Vendor documentation and at least one independent source bearing on the same point (agreeing or qualifying) | `vendor_and_independent` |
+| **Independent evidence** | Independent sources only (for example customer accounts contradicting a marketing claim) | `independent` |
+| **Buyer-provided evidence** | Documents or results the buyer shared, alone or as the deciding source | `buyer` |
+| **Mixed evidence** | Sources that point different ways without resolving, or a mix not captured above | `mixed` |
+
+The basis names the evidence that **decided the status**, not where the claim
+came from. Every claim originates with the vendor; the vendor's own statement of
+the claim never counts toward the basis. So a marketing claim qualified by
+customer reviews has basis **Independent evidence**; a documented capability
+confirmed by reviews has **Vendor + independent evidence**. For Unknown claims,
+the basis names the sources that bear on the part that could be assessed.
+Pricing and plan pages are vendor documentation for what they state (plans,
+packaging, limits), even when prices are not listed.
+
+Rules:
+
+- A properly documented narrow capability can be **Verified on Vendor
+  documentation**. Do not downgrade it just because no independent source
+  exists, and do not describe it as independently confirmed.
+- **Vendor claim only** can never be Verified. With nothing more found, the
+  claim is Unverified (or Unknown if the part that matters cannot be assessed).
+- A vendor AI agent answer is a vendor claim. It cannot move a claim above
+  Unverified on its own; documentation or independent evidence must do that.
+- Competitor content never counts toward any basis.
+
+Absence of evidence is not evidence of absence. "Unverified" means you could not
+confirm it, never that it is false.
+
+---
+
+## 4. Confidence
+
+Assign confidence per claim:
+
+- **High:** the sources that decide the status are strong and consistent with
+  each other: vendor evidence plus independent evidence agree, buyer evidence
+  directly addresses it, or multiple independent sources agree (including
+  agreeing on a qualification or contradiction).
+- **Medium:** one solid source, or several sources of the same type. Vendor
+  evidence alone for a narrow, self-describing fact (an API endpoint, a listed
+  certification, a help-center FAQ) is Medium. Published contract or program
+  terms that state the point directly can be High: they are the strongest kind
+  of vendor documentation because the vendor is bound by them.
+- **Low:** only vendor claims, only thin or dated independent evidence, or
+  sources that conflict without resolution.
+
+Assign **evidence confidence per vendor** from its claims, weighting the claims
+tied to the buyer's stated criteria most: High if those are mostly High; Low if
+those are mostly Low or Unknown; otherwise Medium.
+
+**Balance.** Investigate a similar number of claims per vendor (within one or
+two). A vendor whose agent volunteers more claims must not end up with a longer,
+richer table than the others; pick the claims that matter for the criteria.
+
+**Neutrality rule.** Having a vendor AI agent (Salespeak or otherwise) does not
+raise a vendor's evidence confidence, fit, or score. An agent can make more of a
+vendor's claims visible and specific. Those claims still need vendor evidence or
+independent evidence to reach Verified. If one vendor has an agent and another
+does not, check both vendors' claims to the same standard.
+
+---
+
+## 5. Fit
+
+Per vendor, rate fit to the buyer's criteria, not relative to other vendors
+(so single-vendor evals work the same way): **Strong / Moderate / Weak /
+Unclear**. Base fit only on Verified and Qualified claims (and buyer evidence).
+Unverified claims can be mentioned as upside ("if confirmed") but do not raise
+fit. Rate on the criteria that can be assessed, and name any top criterion that
+cannot be assessed in the vendor's biggest concern and in "Most important
+unknown". Use **Unclear** only when most criteria cannot be assessed. If fit
+hinges on something only the buyer knows (an internal policy, an existing
+contract), rate it on what is known and name the dependency.
+
+---
+
+## 6. Challenge pass (run before final output)
+
+Before writing the report, try to break your own conclusion. Ask:
+
+1. What evidence would make the apparently strongest vendor the wrong choice?
+   (Single vendor or no clear leader: target the most favorable finding.)
+   Search for it specifically (implementation failures, "switching from X",
+   "X alternatives because", migration stories, renewal complaints).
+2. Which material claim has the weakest support? Is it carrying the conclusion?
+3. Am I rewarding polished, specific vendor content over plain independent evidence?
+4. Did I look for contrary customer experiences for every vendor, not only the loser?
+5. Are there hidden constraints: packaging tiers, add-ons, professional services,
+   seat minimums, data migration, regional hosting, integration limits?
+6. Do two sources describe the same capability differently? That is a
+   contradiction or qualification to record.
+7. Am I treating absence of evidence as evidence of absence?
+8. Did one vendor get a stricter or looser standard than another, including
+   because it had an AI agent?
+
+Update statuses, fit, and the summary if the pass changes anything material.
+In the report, include only results that changed or sharpened a finding (for
+example "What changed during review: Vendor A's 6-week implementation claim
+was downgraded to Contradicted after two customer accounts described 4-6 months").
+Never print the checklist itself.

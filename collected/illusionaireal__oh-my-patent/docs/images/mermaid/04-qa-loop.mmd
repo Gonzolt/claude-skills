@@ -1,0 +1,52 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'"Segoe UI","Microsoft YaHei",sans-serif','fontSize':'14px','lineColor':'#64748b'}}}%%
+flowchart TB
+    classDef review fill:#fecaca,stroke:#be123c,stroke-width:2px,color:#7f1d1d
+    classDef respond fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#064e3b
+    classDef examine fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+    classDef archim fill:#4f46e5,stroke:#4338ca,stroke-width:2px,color:#ffffff
+    classDef decision fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef round fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155
+
+    Arch{{Archimedes<br/>调度 QA 循环}}
+    class Arch archim
+
+    subgraph RoundN["QA Round N"]
+        direction TB
+        DR["disclosure-reviewer<br/>撰写规范·法条挑刺"]
+        AE2["adversarial-examiner<br/>无效视角·创造性否定"]
+        SE2["security-engineer<br/>安全边界挑刺"]
+    end
+    class RoundN round
+    class DR review
+    class AE2 examine
+    class SE2 examine
+
+    TR["technical-responder<br/>逐条技术答复<br/>指定 MAIN.md 补丁落点"]
+    class TR respond
+
+    MAIN["MAIN.md<br/>修订落盘"]
+    class MAIN fill:#eff6ff,stroke:#3b82f6,stroke-width:1.5px,color:#1e3a5f
+
+    EXIT{"连续2轮<br/>0 新问题？"}
+    class EXIT decision
+
+    Arch --> DR
+    Arch --> AE2
+    Arch --> SE2
+
+    DR -->|"问题清单"| TR
+    AE2 -->|"攻击点"| TR
+    SE2 -->|"安全隐患"| TR
+
+    TR -->|"补丁"| MAIN
+
+    MAIN --> EXIT
+    EXIT -- 否 --> Arch
+    EXIT -- 是 --> FINAL["FINAL_REVIEW<br/>进入终审"]
+
+    class FINAL fill:#dbeafe,stroke:#6366f1,stroke-width:1.5px,color:#1e1b4b
+
+    style DR fill:#fecaca
+    style AE2 fill:#fef2f2
+    style SE2 fill:#fef2f2
+    style TR fill:#d1fae5

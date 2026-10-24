@@ -1,0 +1,14 @@
+{
+  "name": "chatgpt",
+  "version": "2.0.0",
+  "spec_version": "2.0",
+  "site_url": "https://chatgpt.com",
+  "compiled_at": "2026-04-01T18:41:26.924Z",
+  "requires_auth": true,
+  "last_verified": "2026-04-01T19:43:19.928Z",
+  "quarantined": false,
+  "fingerprint": {
+    "response_shape_hash": "getConversation:f96e21836a90d59d,getModels:7282205f74c73a66,getProfile:e1187e483263d0f8,listConversations:23f75641ded6b1bc,searchConversations:43dc405274c607e4",
+    "last_validated": "2026-04-01T19:43:19.928Z"
+  }
+}

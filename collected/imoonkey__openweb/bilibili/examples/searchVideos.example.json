@@ -1,0 +1,16 @@
+{
+  "operation_id": "searchVideos",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "keyword": "编程",
+        "page": 1
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

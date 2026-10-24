@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+"""Download a video via yt-dlp, or resolve a local file path.
+
+Also fetches subtitles (manual first, then auto-generated) in VTT format so
+transcribe.py can parse them without needing Whisper, and surfaces the
+author-supplied description from info.json as bounded, untrusted evidence.
+"""
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+from pathlib import Path
+from urllib.parse import urlparse
+
+from acquisition import (
+    AcquisitionAttempt,
+    ytdlp_cmd,
+    AcquisitionError,
+    AcquisitionResult,
+    FailureClass,
+    STALE_YTDLP_FAILURES,
+    acquisition_config,
+    acquire_url,
+    local_source_identity,
+    upgrade_ytdlp,
+    ytdlp_autoupdate_enabled,
+)
+from config import read_env_file
+
+
+VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".wmv"}
+
+
+def is_url(source: str) -> bool:
+    if source.startswith("-"):
+        return False
+    parsed = urlparse(source)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def resolve_local(path: str) -> dict:
+    p = Path(path).expanduser().resolve()
+    if not p.exists():
+        result = AcquisitionResult(
+            state="fatal", media_path=None, subtitle_candidates=[],
+            selected_subtitle=None, metadata={},
+            source_identity="0" * 64,
+            attempts=[AcquisitionAttempt(
+                strategy="local", outcome="failed",
+                failure_class=FailureClass.INVALID_SOURCE.value, exit_code=3,
+                detail="local source does not exist",
+            )],
+            failure_class=FailureClass.INVALID_SOURCE.value,
+        )
+        raise AcquisitionError(result)
+    if p.suffix.lower() not in VIDEO_EXTS:
+        print(
+            f"[watch] warning: {p.suffix} is not a known video extension, proceeding anyway",
+            file=sys.stderr,
+        )
+    return AcquisitionResult(
+        state="success", media_path=str(p), subtitle_candidates=[],
+        selected_subtitle=None, metadata={"title": p.name, "url": str(p)},
+        source_identity=local_source_identity(p),
+        attempts=[AcquisitionAttempt(
+            strategy="local", outcome="success", failure_class=None, exit_code=0,
+        )],
+        selected_strategy="local", downloaded=False,
+    ).as_dict()
+
+
+def _subtitle_candidates(out_dir: Path, languages: tuple[str, ...] = ("en",)) -> list[Path]:
+    candidates = sorted(out_dir.glob("video*.vtt"))
+    if not candidates:
+        return candidates
+    if languages == ("auto",):
+        # auto asks for the spoken-language original. NOTE the scope: the auto
+        # FETCH pattern never requests a native manual track, so in production
+        # this ranking normally sees only -orig + translations; the manual
+        # ranks are defensive (user-populated dirs). The manual-over-ASR
+        # guarantee itself belongs to default/explicit languages. Ordering
+        # (from the sibling info.json, fail-open to -orig-first):
+        #   0 manual in the video's language → 1 original ASR (-orig or the
+        #   video's language) → 2 manual translation → 3 everything else.
+        manual_codes: set[str] = set()
+        video_lang = ""
+        try:
+            raw = json.loads((out_dir / "video.info.json").read_text(encoding="utf-8"))
+            if isinstance(raw, dict):  # any other root: fail open to -orig-first
+                manual_codes = {str(c).lower() for c in (raw.get("subtitles") or {})}
+                video_lang = str(raw.get("language") or "").split("-", 1)[0].lower()
+        except (OSError, ValueError):
+            pass
+
+        def _auto_rank(candidate: Path) -> tuple[int, int, str]:
+            parts = candidate.name.split(".")
+            code = parts[-2].lower() if len(parts) >= 3 else ""
+            base = code.split("-", 1)[0]
+            # Native-manual rank ONLY with a known, matching video language:
+            # with the language unknown, a manual track may be a translation
+            # and must never outrank the requested -orig original.
+            if video_lang and code in manual_codes and base == video_lang:
+                return (0, 0, candidate.name)
+            if code.endswith("-orig") or (video_lang and base == video_lang):
+                # Dubbed videos carry one -orig per audio language: prefer the
+                # video's own language, else English-first when it is unknown.
+                want = video_lang or "en"
+                return (1, 0 if base == want else 1, candidate.name)
+            if code in manual_codes:
+                return (2, 0, candidate.name)
+            return (3, 0, candidate.name)
+
+        return sorted(candidates, key=_auto_rank)
+    ordered: list[Path] = []
+    for language in languages:
+        base = language.split("-", 1)[0].lower()
+        # Exact-language track before the "-orig" ASR track: when both exist the
+        # exact one is the human-written upload, and ASR garbles proper nouns
+        # ("jillian lynn" for Gillian Lynne), which starves lexical retrieval.
+        exact: list[Path] = []
+        asr_orig: list[Path] = []
+        for candidate in candidates:
+            name = candidate.name.lower()
+            if candidate in ordered:
+                continue
+            if f".{language.lower()}." in name or f".{base}." in name:
+                exact.append(candidate)
+            elif f".{language.lower()}-orig." in name or f".{base}-orig." in name:
+                # Regional originals too (en-US-orig), or a requested en-US
+                # ranks its own original behind unrelated translations.
+                asr_orig.append(candidate)
+        ordered.extend(exact + asr_orig)
+    ordered.extend(candidate for candidate in candidates if candidate not in ordered)
+    return ordered
+
+
+def caption_provenance(subtitle_path: str | Path, info: dict | None) -> dict:
+    """Best-effort provenance for the caption track actually CONSUMED.
+
+    Derived from info.json (never the filename alone): the track code is
+    looked up in `subtitles` (human-uploaded) vs `automatic_captions` (ASR /
+    machine translation), and `original` / `translated` compare its language
+    against the video's spoken language. The caller must pass the info dict
+    from the SAME acquisition that produced subtitle_path — a second
+    acquisition can select a different track (upstream #92/#123 audit).
+    """
+    name = Path(subtitle_path).name
+    parts = name.split(".")
+    code = parts[-2] if len(parts) >= 3 else "unknown"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", code):
+        # The code is rendered into the report: anything outside a plain
+        # language-tag shape is not trusted as one.
+        code = "unknown"
+    info = info or {}
+    codes = info.get("caption_codes") or {
+        "manual": list(info.get("subtitles") or {}),
+        "automatic": list(info.get("automatic_captions") or {}),
+    }
+    manual = code in (codes.get("manual") or ())
+    automatic = code in (codes.get("automatic") or ())
+    base = code.split("-", 1)[0].lower()
+    video_lang = str(info.get("language") or "").split("-", 1)[0].lower()
+    is_orig = code.lower().endswith("-orig")
+    kind = "manual" if manual else ("automatic" if automatic else "unknown")
+    # Info-derived, never filename-trusted: a track the info.json cannot
+    # vouch for gets no `original` claim, `-orig` suffix or not. A MANUAL
+    # translation is still a translation (human-written, different language).
+    known = kind != "unknown"
+    return {
+        "code": code,
+        "kind": kind,
+        # A -orig of another language than a KNOWN video language (dubbed
+        # video, one -orig per audio track) is not the original.
+        "original": bool(known and (base == video_lang if video_lang else is_orig)),
+        "translated": bool(known and video_lang and base != video_lang),
+    }
+
+
+def _pick_subtitle(out_dir: Path) -> Path | None:
+    candidates = _subtitle_candidates(out_dir)
+    return candidates[0] if candidates else None
+
+
+def _pick_video(out_dir: Path) -> Path | None:
+    for ext in (".mp4", ".mkv", ".webm", ".mov", ".m4a", ".mp3", ".opus"):
+        for candidate in out_dir.glob(f"video*{ext}"):
+            return candidate
+    for candidate in out_dir.glob("video.*"):
+        if candidate.suffix.lower() in VIDEO_EXTS:
+            return candidate
+    return None
+
+
+def fetch_captions(url: str, out_dir: Path) -> dict:
+    """Fetch metadata and best available VTT captions without downloading video."""
+    if shutil.which("yt-dlp") is None and ytdlp_cmd() == ("yt-dlp",):
+        raise SystemExit(
+            "yt-dlp is not usable. Install with: brew install yt-dlp "
+            "(or pip install yt-dlp so `python -m yt_dlp` works)"
+        )
+
+    cfg = acquisition_config(read_env_file())
+    result = acquire_url(
+        url, out_dir, captions_only=True,
+        languages=cfg["languages"], cookie_spec=cfg["cookie_spec"],
+        player_clients=cfg["player_clients"], runner=subprocess.run,
+        pick_media=_pick_video, pick_subtitles=_subtitle_candidates,
+        read_metadata=_read_info, ignore_config=cfg["ignore_config"],
+    )
+    # Caption absence is not fatal: watch.py may continue to media/ASR.
+    payload = result.as_dict()
+    # Non-secret FACT for retention decisions: whether this acquisition was
+    # configured to authenticate (the cache must never retain such media).
+    payload["cookie_used"] = bool(cfg["cookie_spec"])
+    return payload
+
+
+def _read_info(info_path: Path, url: str) -> dict:
+    info: dict = {}
+    if info_path.exists():
+        try:
+            raw = json.loads(info_path.read_text(encoding="utf-8"))
+            # Title and uploader are author-controlled and land in the report
+            # header, outside the description's fence -- sanitize at the source
+            # so every consumer gets a marker-safe value.
+            title = raw.get("title")
+            uploader = raw.get("uploader") or raw.get("channel")
+            info = {
+                "title": sanitize_for_report(title) if title else title,
+                "uploader": sanitize_for_report(uploader) if uploader else uploader,
+                "duration": raw.get("duration"),
+                "url": raw.get("webpage_url") or url,
+                # Author-supplied and untrusted, but it is the only place the
+                # exact spellings live: ASR renders "OmniRoute" as "Omniroot".
+                # format_description() sanitizes on the way out.
+                "description": raw.get("description"),
+                # Caption provenance inputs: track CODES only (never the URL
+                # dicts), so caption_provenance can tell manual from ASR from
+                # machine translation for the track actually consumed.
+                "language": raw.get("language"),
+                # Fail-closed visibility fact for the cache: only an explicit
+                # "public" ever permits store or hit.
+                "availability": raw.get("availability"),
+                "caption_codes": {
+                    "manual": sorted((raw.get("subtitles") or {}).keys()),
+                    "automatic": sorted((raw.get("automatic_captions") or {}).keys()),
+                },
+            }
+        except Exception as exc:
+            print(f"[watch] info.json parse failed: {exc}", file=sys.stderr)
+            info = {"url": url}
+    return info
+
+
+def download_url(
+    url: str,
+    out_dir: Path,
+    audio_only: bool = False,
+) -> dict:
+    if shutil.which("yt-dlp") is None and ytdlp_cmd() == ("yt-dlp",):
+        raise SystemExit(
+            "yt-dlp is not usable. Install with: brew install yt-dlp "
+            "(or pip install yt-dlp so `python -m yt_dlp` works)"
+        )
+
+    env_file = read_env_file()
+    cfg = acquisition_config(env_file)
+
+    def _acquire() -> "object":
+        return acquire_url(
+            url, out_dir, audio_only=audio_only,
+            languages=cfg["languages"], cookie_spec=cfg["cookie_spec"],
+            max_filesize=cfg["max_filesize"],
+            player_clients=cfg["player_clients"], runner=subprocess.run,
+            pick_media=_pick_video, pick_subtitles=_subtitle_candidates,
+            read_metadata=_read_info, ignore_config=cfg["ignore_config"],
+        )
+
+    result = _acquire()
+    # Self-heal: a stale yt-dlp is the usual cause of a 403/SABR/format-gone
+    # media failure (metadata still worked). Upgrade yt-dlp ONCE and retry ONCE,
+    # then use the fresh module. Default on; opt out with WATCH_YTDLP_AUTOUPDATE=0
+    # (honored from ~/.config/watch/.env OR the environment).
+    if (result.state == "fatal"
+            and result.failure_class in STALE_YTDLP_FAILURES
+            and ytdlp_autoupdate_enabled(env=env_file)):
+        print("[watch] yt-dlp download failed (looks outdated) — upgrading yt-dlp and retrying…",
+              file=sys.stderr)
+        if upgrade_ytdlp():
+            try:
+                retry = _acquire()
+            except SystemExit:
+                retry = None  # e.g. yt-dlp still unusable — keep the original 403
+            # Only adopt the retry if it actually recovered; a still-fatal (or
+            # raised) retry keeps the ORIGINAL stale-class result so
+            # AcquisitionError's actionable "upgrade yt-dlp" message survives.
+            if retry is not None and retry.state != "fatal":
+                result = retry
+        else:
+            print("[watch] yt-dlp auto-upgrade could not run (offline or managed env).",
+                  file=sys.stderr)
+    if result.state == "fatal":
+        raise AcquisitionError(result)
+    payload = result.as_dict()
+    # Non-secret FACT for retention decisions: whether this acquisition was
+    # configured to authenticate. The cache forbids retaining such media even
+    # if the cookie setting changes again before the insert (ABA race).
+    payload["cookie_used"] = bool(cfg["cookie_spec"])
+    return payload
+
+
+def download(
+    source: str,
+    out_dir: Path,
+    audio_only: bool = False,
+) -> dict:
+    if is_url(source):
+        return download_url(source, out_dir, audio_only=audio_only)
+    return resolve_local(source)
+
+
+DESCRIPTION_CHAR_LIMIT = 2000
+
+ZWSP = "​"
+
+# The report wraps media-derived text in BEGIN/END UNTRUSTED VIDEO EVIDENCE
+# markers. Match the *distinguishing phrase* rather than the exact marker
+# string: an LLM will honor "<!-- END  UNTRUSTED   VIDEO  EVIDENCE -->" as the
+# boundary just as readily, so an exact-string replace is trivially bypassed.
+_MARKER_RE = re.compile(r"UNTRUSTED\s+VIDEO\s+EVIDENCE", re.IGNORECASE)
+
+# v1.5.6 (donlapidos audit, W011): three vectors our sanitizer missed.
+#
+# C0/C1 control bytes (category Cc, which the Cf-focused strip_invisible
+# deliberately leaves alone) except tab/newline — covers ANSI/OSC escapes via
+# ESC (0x1B). Stripped outright: a control byte has no spelling to preserve.
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# ANY tag-shaped token gets a ZWSP after "<" so it no longer parses as
+# markup: property-based (shape, not an enumerated tag-name list), and the
+# text stays readable — "<b>bold</b>" in a description survives legibly while
+# "<system-reminder>" can never impersonate harness structure.
+_TAG_SHAPE_RE = re.compile(r"<(?=\s*/?\s*[A-Za-z!?])")
+# Chat-turn impersonation: a line-leading role word + colon (optionally after
+# a [MM:SS]/[H:MM:SS] transcript stamp) reads as a forged conversation turn.
+# ZWSP inside the role word defuses it while keeping quoted dialogue legible.
+_TURN_RE = re.compile(
+    r"(?im)^(\s*(?:\[[0-9:.]+\]\s*)?)(human|assistant|system|user|developer|ai)(\s*:)"
+)
+
+# CommonMark and LLM readers treat all of these as line breaks; str.split("\n")
+# does not, so a fence hidden behind one would evade a naive line scanner.
+_LINE_BREAKS = ("\r\n", "\r", " ", " ", "\f", "\x85")
+
+# Code points that render as NOTHING but read as text to a model. They are the
+# gap between what the user sees in the report and what the agent consumes, so
+# an uploader can hide instructions in a description or a caption track that are
+# invisible to the human approving the answer. Stripped, never zero-width-padded
+# (there is no spelling to preserve inside a character that has no glyph).
+_INVISIBLE_CODEPOINTS = frozenset({
+    # Zero-width spacers and joiners.
+    0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x00AD, 0x034F, 0x180E,
+    0x2061, 0x2062, 0x2063, 0x2064,
+    # Bidi embeddings/overrides/isolates — the Trojan Source class
+    # (CVE-2021-42574): these do not change the characters a model reads, they
+    # change the order a human SEES, so reviewer and agent disagree about the
+    # same line. Legitimate Arabic/Hebrew is unaffected: the Unicode Bidi
+    # Algorithm derives direction from the characters themselves.
+    0x200E, 0x200F, 0x061C, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+    0x2066, 0x2067, 0x2068, 0x2069,
+    # Blank-width *letters* — not format controls, so a category filter misses
+    # them, and they survive whitespace normalization.
+    0x115F, 0x1160, 0x3164, 0xFFA0,
+})
+# The Unicode tag block: originally language tags, now used to smuggle a whole
+# ASCII payload as invisible characters (chr(0xE0000 + ord(c)) per letter).
+_TAG_BLOCK = range(0xE0000, 0xE0080)
+
+
+# Variation selectors. VS1-16 (Mn, so a category filter for format chars misses
+# them) and VS17-256 each carry a byte, giving the same arbitrary-payload channel
+# as the tag block. Verified: a 10-byte payload round-tripped through VS17+.
+_VARIATION_SELECTORS = frozenset(range(0xFE00, 0xFE10)) | frozenset(range(0xE0100, 0xE01F0))
+
+# ZWJ and ZWNJ are the only two invisibles with legitimate *semantic* use in
+# prose: ZWJ joins emoji (👨‍💻) and ZWNJ is a required half-space in Persian
+# (می‌رود) and affects Indic conjuncts. Stripping them unconditionally corrupts
+# real titles and descriptions, so they are kept only where they can be doing
+# that job — between two non-ASCII characters. Between ASCII they can only be
+# evasion padding ("SYS<ZWJ>TEM"), so they go.
+_CONTEXTUAL = {0x200C, 0x200D}
+
+
+def strip_invisible(text: str) -> tuple[str, int]:
+    """Drop code points that render as nothing. Returns (text, removed_count).
+
+    Category ``Cf`` (format) is stripped wholesale rather than by enumeration:
+    it covers zero-width spacers, bidi controls, the tag block, the deprecated
+    U+206A-206F formatting characters, and — critically — anything Unicode adds
+    later. An enumerated denylist silently reopens this hole on every new
+    Unicode revision, which is how U+206A slipped past the first version of
+    this function and left the UNTRUSTED-marker defense bypassable.
+    """
+    kept: list[str] = []
+    removed = 0
+    for i, ch in enumerate(text):
+        code = ord(ch)
+        if code in _CONTEXTUAL:
+            prev_ch = text[i - 1] if i else ""
+            next_ch = text[i + 1] if i + 1 < len(text) else ""
+            if prev_ch and next_ch and ord(prev_ch) > 0x7F and ord(next_ch) > 0x7F:
+                kept.append(ch)      # joining emoji or Arabic/Indic letters
+                continue
+            removed += 1
+            continue
+        if (unicodedata.category(ch) == "Cf"
+                or code in _INVISIBLE_CODEPOINTS
+                or code in _TAG_BLOCK
+                or code in _VARIATION_SELECTORS):
+            removed += 1
+            continue
+        kept.append(ch)
+    return "".join(kept), removed
+
+
+def sanitize_for_report(text: str) -> str:
+    """Neutralize sequences in uploader-controlled text that could escape the
+    report's structure when an agent reads it.
+
+    Everything media-derived is attacker-controlled: the description, the title,
+    the uploader name, and the transcript (manual captions are uploaded by the
+    author). Without this, a description containing the END marker closes the
+    untrusted block early and everything after it reads as trusted context.
+
+    Four vectors:
+      0. invisible code points (zero-width, bidi overrides, blank-width letters,
+         the Unicode tag block) -- text the human reviewer cannot see but the
+         agent reads verbatim. Stripped FIRST, before the defenses below add
+         their own zero-width padding;
+      1. the BEGIN/END UNTRUSTED VIDEO EVIDENCE markers, matched loosely;
+      2. lines opening a GFM fence (3+ backticks or tildes) -- the description
+         is rendered inside a fence, so one would close it and let the rest
+         render as report structure;
+      3. fences hidden behind non-LF line terminators.
+
+    ponytail: zero-width spaces, not deletion, for vectors 1-3. The text stays
+    readable and the exact spellings survive (the whole reason the description
+    is in the report), but the token no longer reads as a marker or a fence.
+    Vector 0 is the exception: an invisible character has no spelling to keep.
+    """
+    text, _ = strip_invisible(text)
+
+    for terminator in _LINE_BREAKS:
+        text = text.replace(terminator, "\n")
+
+    # v1.5.6: control bytes (incl. ANSI escapes) stripped AFTER terminator
+    # normalization so \r handling stays intact; tags and turn markers are
+    # ZWSP-defused in the same spirit as the marker/fence defenses below.
+    text = _CONTROL_RE.sub("", text)
+    text = _TAG_SHAPE_RE.sub("<" + ZWSP, text)
+    text = _TURN_RE.sub(lambda m: m.group(1) + m.group(2)[0] + ZWSP + m.group(2)[1:] + m.group(3), text)
+
+    text = _MARKER_RE.sub(lambda m: ZWSP.join(m.group(0)), text)
+
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            lines[i] = ZWSP + line
+    return "\n".join(lines)
+
+
+def format_description(info: dict, limit: int = DESCRIPTION_CHAR_LIMIT) -> str | None:
+    """The author-supplied description, bounded, or None if there isn't one.
+
+    Worth surfacing because ASR cannot spell: on a repo-roundup video the
+    auto-captions recovered 1 of 13 repo names ("Omniroot" for OmniRoute), while
+    the description carried all 13 verbatim for ~540 tokens. Links, product
+    names, and URLs live here and nowhere else in the audio.
+
+    It is author-controlled text, so callers must render it inside the report's
+    untrusted-evidence markers and must never treat it as authoritative for what
+    happens on screen. ponytail: a character cap, not a token count -- ~4 chars
+    per token is close enough to keep a spam-stuffed description from crowding
+    out the transcript.
+    """
+    body = (info.get("description") or "").strip()
+    if not body:
+        return None
+    if len(body) > limit:
+        body = body[:limit].rstrip() + f"\n\n[… truncated at {limit} characters]"
+    # Sanitize last: truncation could otherwise slice a neutralized marker back
+    # into a live one.
+    return sanitize_for_report(body)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("usage: download.py <url-or-path> <out-dir>", file=sys.stderr)
+        raise SystemExit(2)
+    result = download(sys.argv[1], Path(sys.argv[2]))
+    print(json.dumps(result, indent=2))

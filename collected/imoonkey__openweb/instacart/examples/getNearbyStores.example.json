@@ -1,0 +1,7 @@
+{
+  "operation_id": "getNearbyStores",
+  "cases": [{
+    "input": { "postalCode": "27705" },
+    "assertions": { "status": 200, "response_schema_valid": true }
+  }]
+}

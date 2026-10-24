@@ -1,0 +1,1388 @@
+openapi: 3.1.0
+info:
+  title: zhihu
+  version: 1.0.0
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: 2026-03-29T06:44:16.243Z
+    requires_auth: true
+servers:
+  - url: https://www.zhihu.com
+    x-openweb:
+      transport: node
+      auth:
+        type: cookie_session
+      csrf:
+        type: cookie_to_header
+        cookie: _xsrf
+        header: x-xsrftoken
+paths:
+  /api/v3/entity_word:
+    get:
+      operationId: getEntityWord
+      summary: Get entity word annotations for an answer — knowledge card data, linked topics
+      x-openweb:
+        permission: read
+        build:
+          stable_id: fe21ae4e0b04002d
+          tool_version: 2
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 1
+          description: Answer ID
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            default: answer
+          example: answer
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  search_words:
+                    anyOf:
+                      - type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            mention:
+                              type: string
+                            matchorder:
+                              type: integer
+                            begin:
+                              type: integer
+                            end:
+                              type: integer
+                            entityid:
+                              type: integer
+                            is_book_mark:
+                              type: boolean
+                            link:
+                              type: object
+                              properties:
+                                link_type:
+                                  type: integer
+                                link_url:
+                                  type: string
+                                  description: URL
+                                doc_type:
+                                  type: string
+                                topic_token:
+                                  type: string
+                              required:
+                                - link_type
+                                - link_url
+                                - doc_type
+                                - topic_token
+                            entity_class:
+                              type: string
+                            score:
+                              type: number
+                            attached_info_bytes:
+                              type: string
+                            IsOnAB:
+                              type: boolean
+                            IsNatural:
+                              type: integer
+                            IsDelete:
+                              type: boolean
+                            ContentType:
+                              type: string
+                            ContentId:
+                              type: string
+                            ContentToken:
+                              type: string
+                          required:
+                            - name
+                            - mention
+                            - matchorder
+                            - begin
+                            - end
+                            - entityid
+                            - is_book_mark
+                            - link
+                            - entity_class
+                            - score
+                            - attached_info_bytes
+                            - IsOnAB
+                            - IsNatural
+                            - IsDelete
+                            - ContentType
+                            - ContentId
+                            - ContentToken
+                      - type: "null"
+                  ab_params:
+                    type: object
+                    properties:
+                      qa_searchword:
+                        type: string
+                    required:
+                      - qa_searchword
+                required:
+                  - search_words
+                  - ab_params
+  /api/v3/feed/topstory/recommend:
+    get:
+      operationId: getFeedRecommend
+      summary: Get recommended feed items — question titles, answer excerpts, vote counts, author info, pagination
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: getFeedRecommend
+        build:
+          stable_id: 27f5d18c6ac460dd
+          tool_version: 2
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+          example: down
+        - name: after_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+        - name: desktop
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "true"
+          example: "true"
+          description: Desktop mode flag
+        - name: end_offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+        - name: page_number
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        verb:
+                          type: string
+                        created_time:
+                          type: integer
+                        target:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            type:
+                              type: string
+                            url:
+                              type: string
+                              description: URL
+                            excerpt:
+                              type: string
+                            voteup_count:
+                              type: integer
+                            comment_count:
+                              type: integer
+                            favorite_count:
+                              type: integer
+                            thanks_count:
+                              type: integer
+                            created_time:
+                              type: integer
+                            updated_time:
+                              type: integer
+                            author:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                url_token:
+                                  type: string
+                                name:
+                                  type: string
+                                headline:
+                                  type: string
+                                avatar_url:
+                                  type: string
+                                  description: URL
+                            question:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                title:
+                                  type: string
+                                url:
+                                  type: string
+                                  description: URL
+                                answer_count:
+                                  type: integer
+                                follower_count:
+                                  type: integer
+                required:
+                  - data
+  /api/v3/moments/{url_token}/activities:
+    get:
+      operationId: listMemberActivities
+      summary: List user recent activity feed — answers, articles, upvotes, timestamps
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: listMemberActivities
+        build:
+          stable_id: 36eae2abb0983ca3
+          tool_version: 2
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User URL token (username slug)
+          example: zhang-jia-wei
+        - name: desktop
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "true"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+          description: Max items (default 5)
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+        - name: page_num
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        verb:
+                          type: string
+                        created_time:
+                          type: integer
+                        action_text:
+                          type: string
+                        target:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            type:
+                              type: string
+                            title:
+                              type: string
+                            url:
+                              type: string
+                              description: URL
+                            excerpt:
+                              type: string
+                            voteup_count:
+                              type: integer
+                            comment_count:
+                              type: integer
+                            created_time:
+                              type: integer
+                            updated_time:
+                              type: integer
+                            author:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                url_token:
+                                  type: string
+                                name:
+                                  type: string
+                                headline:
+                                  type: string
+                                avatar_url:
+                                  type: string
+                                  description: URL
+                            question:
+                              anyOf:
+                                - type: object
+                                  properties:
+                                    id:
+                                      type: string
+                                    title:
+                                      type: string
+                                    url:
+                                      type: string
+                                      description: URL
+                                - type: "null"
+                required:
+                  - data
+  /api/v4/me:
+    get:
+      operationId: getMe
+      summary: Get current authenticated user info — name, avatar, follower count, answer count, notification counts
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: getMe
+        build:
+          stable_id: ba0c00fc4238c265
+          tool_version: 2
+      parameters: []
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  url_token:
+                    type: string
+                  name:
+                    type: string
+                  avatar_url:
+                    type: string
+                    description: URL
+                  headline:
+                    type: string
+                  gender:
+                    type: integer
+                  is_org:
+                    type: boolean
+                  type:
+                    type: string
+                  url:
+                    type: string
+                    description: URL
+                  answer_count:
+                    type: integer
+                  question_count:
+                    type: integer
+                  articles_count:
+                    type: integer
+                  favorite_count:
+                    type: integer
+                  voteup_count:
+                    type: integer
+                  thanked_count:
+                    type: integer
+                  default_notifications_count:
+                    type: integer
+                  follow_notifications_count:
+                    type: integer
+                  vote_thank_notifications_count:
+                    type: integer
+                  messages_count:
+                    type: integer
+                required:
+                  - id
+                  - url_token
+                  - name
+                  - avatar_url
+                  - is_org
+                  - type
+                  - url
+                  - answer_count
+                  - voteup_count
+  /api/v4/members/{url_token}:
+    get:
+      operationId: getMember
+      summary: Get user profile by url_token — name, bio, answer count, follower count, following count, employment
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: getMember
+        build:
+          stable_id: d449a10757e77a6a
+          tool_version: 2
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User URL token (username slug)
+          example: zhang-jia-wei
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "allow_message,is_followed,is_following,is_org,is_blocking,employments,answer_count,follower_count,articles_count,gender,badge[?(type=best_answerer)].topics"
+          description: Comma-separated fields to include
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  url_token:
+                    type: string
+                  name:
+                    type: string
+                  avatar_url:
+                    type: string
+                    description: URL
+                  headline:
+                    type: string
+                  gender:
+                    type: integer
+                  is_org:
+                    type: boolean
+                  type:
+                    type: string
+                  url:
+                    type: string
+                    description: URL
+                  user_type:
+                    type: string
+                  follower_count:
+                    type: integer
+                  answer_count:
+                    type: integer
+                  articles_count:
+                    type: integer
+                  employments:
+                    type: array
+                    items:
+                      type: object
+                      description: Employment entry with job and company info
+                  badge:
+                    type: array
+                    items:
+                      type: object
+                      description: Badge info with type and description
+                  allow_message:
+                    type: boolean
+                  is_following:
+                    type: boolean
+                  is_followed:
+                    type: boolean
+                  is_blocking:
+                    type: boolean
+                required:
+                  - id
+                  - url_token
+                  - name
+                  - avatar_url
+                  - headline
+                  - is_org
+                  - type
+                  - url
+                  - user_type
+  /api/v4/members/{url_token}/relations/mutuals:
+    get:
+      operationId: listMemberMutuals
+      summary: List mutual followers between current user and target user — name, avatar, answer count
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 9c51b1011c14fd39
+          tool_version: 2
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User URL token
+          example: zhang-jia-wei
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "data[*].answer_count,articles_count,gender,follower_count,is_followed,is_following,badge[?(type=best_answerer)].topics"
+          description: Comma-separated fields to include
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      totals:
+                        type: integer
+                      previous:
+                        type: string
+                        description: URL
+                      is_start:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                    required:
+                      - is_end
+                      - totals
+                      - previous
+                      - is_start
+                      - next
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        is_followed:
+                          type: boolean
+                        avatar_url_template:
+                          type: string
+                          description: URL
+                        user_type:
+                          type: string
+                        answer_count:
+                          type: integer
+                        is_following:
+                          type: boolean
+                        url:
+                          type: string
+                          description: URL
+                        type:
+                          type: string
+                        url_token:
+                          type: string
+                        id:
+                          type: string
+                        articles_count:
+                          type: integer
+                        name:
+                          type: string
+                        headline:
+                          type: string
+                        gender:
+                          type: integer
+                        vip_info:
+                          type: object
+                          properties:
+                            is_vip:
+                              type: boolean
+                        is_advertiser:
+                          type: boolean
+                        avatar_url:
+                          type: string
+                          description: URL
+                        is_org:
+                          type: boolean
+                        follower_count:
+                          type: integer
+                        badge:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                              description:
+                                type: string
+                            required:
+                              - type
+                              - description
+                required:
+                  - paging
+                  - data
+  /api/v4/questions/{id}/concerned_followers:
+    get:
+      operationId: listQuestionFollowers
+      summary: List users following a question — avatar, name, follower count
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 00397a033d1a97d4
+          tool_version: 2
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+          description: Question ID
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      totals:
+                        type: integer
+                      previous:
+                        type: string
+                        description: URL
+                      is_start:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                    required:
+                      - is_end
+                      - totals
+                      - previous
+                      - is_start
+                      - next
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        url_token:
+                          type: string
+                        name:
+                          type: string
+                        headline:
+                          type: string
+                        avatar_url:
+                          type: string
+                          description: URL
+                        follower_count:
+                          type: integer
+                        answer_count:
+                          type: integer
+                        gender:
+                          type: integer
+                        user_type:
+                          type: string
+                        is_following:
+                          type: boolean
+                        is_followed:
+                          type: boolean
+                required:
+                  - paging
+                  - data
+  /api/v4/questions/{id}/similar-questions:
+    get:
+      operationId: listSimilarQuestions
+      summary: List similar questions to a given question — title, answer count, follower count
+      x-openweb:
+        permission: read
+        build:
+          stable_id: 89a2f159f1641eb2
+          tool_version: 2
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+          description: Question ID
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "data[*].answer_count,author,follower_count"
+          description: Comma-separated fields to include
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      is_start:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                      previous:
+                        type: string
+                        description: URL
+                      totals:
+                        type: integer
+                    required:
+                      - is_end
+                      - is_start
+                      - next
+                      - previous
+                      - totals
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        title:
+                          type: string
+                        question_type:
+                          type: string
+                        created:
+                          type: integer
+                        updated_time:
+                          type: integer
+                        url:
+                          type: string
+                          description: URL
+                        answer_count:
+                          type: integer
+                        comment_count:
+                          type: integer
+                        follower_count:
+                          type: integer
+                        relationship:
+                          type: object
+                          properties: {}
+                          required: []
+                        id:
+                          type: string
+                required:
+                  - paging
+                  - data
+  /api/v4/search_v3:
+    get:
+      operationId: searchContent
+      summary: Search questions and answers by keyword — returns title, excerpt, vote count, answer count, author info
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: searchContent
+        build:
+          stable_id: 6a562013f2198726
+          tool_version: 2
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          example: 1
+          description: Max results per page (default 20)
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          example: 1
+          description: Pagination offset
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: 人工智能
+          description: Search query text
+        - name: t
+          in: query
+          required: false
+          schema:
+            type: string
+            default: general
+          example: general
+          description: Result type filter
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      next:
+                        type: string
+                        description: URL
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        highlight:
+                          anyOf:
+                            - type: object
+                              properties:
+                                description:
+                                  type: string
+                                title:
+                                  type: string
+                            - type: "null"
+                        object:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            type:
+                              type: string
+                            title:
+                              type: string
+                            url:
+                              type: string
+                              description: URL
+                            excerpt:
+                              type: string
+                            voteup_count:
+                              type: integer
+                            comment_count:
+                              type: integer
+                            zfav_count:
+                              anyOf:
+                                - type: integer
+                                - type: "null"
+                            created_time:
+                              type: integer
+                            updated_time:
+                              type: integer
+                            thumbnail_info:
+                              type: object
+                            author:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                url_token:
+                                  type: string
+                                name:
+                                  type: string
+                                headline:
+                                  type: string
+                                avatar_url:
+                                  type: string
+                                  description: URL
+                            question:
+                              anyOf:
+                                - type: object
+                                  properties:
+                                    id:
+                                      type: string
+                                    title:
+                                      type: string
+                                    url:
+                                      type: string
+                                      description: URL
+                                    type:
+                                      type: string
+                                    answer_count:
+                                      type: integer
+                                    follower_count:
+                                      type: integer
+                                - type: "null"
+                required:
+                  - data
+  /api/v4/search/hot_search:
+    get:
+      operationId: getHotSearch
+      summary: Get trending hot search terms — query text, display text, search count
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: getHotSearch
+        build:
+          stable_id: 11773b7de3ae021f
+          tool_version: 2
+      parameters: []
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hot_search_queries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        query:
+                          type: string
+                        real_query:
+                          type: string
+                        hot_show:
+                          type: string
+                        label:
+                          type: string
+                        index:
+                          type: integer
+                      required:
+                        - query
+                        - hot_show
+                        - index
+                required:
+                  - hot_search_queries
+  /api/v4/members/{url_token}/answers:
+    get:
+      operationId: getUserAnswers
+      summary: Get a user's answer list — question titles, answer excerpts, vote counts, timestamps
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: zhihu-read
+          operation: getUserAnswers
+        build:
+          stable_id: zhihu0003
+          tool_version: 1
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User URL token.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Results per page.
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            default: created
+          description: "Sort order: created, voteups."
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,annotation_action,annotation_detail,collapse_reason,collapsed_by,suggest_edit,comment_count,can_comment,content,voteup_count,reshipment_settings,comment_permission,mark_infos,created_time,updated_time,review_info,excerpt,is_labeled,label_info,relationship.is_authorized,voting,is_author,is_thanked,is_nothelp,is_recognized;data[*].author.badge[?(type=best_answerer)].topics;data[*].question.has_publishing_draft,relationship"
+          description: Fields to include in the response.
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paging:
+                    type: object
+                    properties:
+                      is_end:
+                        type: boolean
+                      totals:
+                        type: integer
+                      next:
+                        type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        url:
+                          type: string
+                          description: URL
+                        excerpt:
+                          type: string
+                        voteup_count:
+                          type: integer
+                        comment_count:
+                          type: integer
+                        created_time:
+                          type: integer
+                        updated_time:
+                          type: integer
+                        author:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            url_token:
+                              type: string
+                            name:
+                              type: string
+                            headline:
+                              type: string
+                            avatar_url:
+                              type: string
+                              description: URL
+                        question:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            title:
+                              type: string
+                            url:
+                              type: string
+                              description: URL
+                            type:
+                              type: string
+                            answer_count:
+                              type: integer
+                            follower_count:
+                              type: integer
+                required:
+                  - paging
+                  - data
+  /api/v4/answers/{answer_id}/voters:
+    post:
+      operationId: upvoteAnswer
+      summary: Upvote an answer — toggleable, sends "up" or "neutral" to vote/unvote
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: zhihu0011
+          tool_version: 1
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: answer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Answer ID to upvote (numeric string).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - up
+                    - neutral
+                  default: up
+                  description: "Vote type: 'up' to upvote, 'neutral' to cancel vote."
+              required:
+                - type
+      responses:
+        "200":
+          description: Vote registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  voting:
+                    type: integer
+                    description: "Current vote state: 1=upvoted, 0=neutral, -1=downvoted."
+                  voteup_count:
+                    type: integer
+                    description: Total upvote count after this action.
+                required:
+                  - success
+                  - voting
+                  - voteup_count
+  /api/v4/answers/{answer_id}/voters~cancelUpvote:
+    post:
+      operationId: cancelUpvote
+      summary: Cancel an upvote on an answer — POSTs type=neutral to voters endpoint
+      x-openweb:
+        permission: write
+        safety: caution
+        actual_path: /api/v4/answers/{answer_id}/voters
+        build:
+          stable_id: zhihu0014
+          tool_version: 1
+      parameters:
+        - name: answer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Answer ID to cancel upvote on (numeric string).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  const: neutral
+                  description: "Always 'neutral' — cancels the vote."
+              required:
+                - type
+      responses:
+        "200":
+          description: Vote cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  voting:
+                    type: integer
+                    description: "Current vote state after cancel: 0=neutral."
+                  voteup_count:
+                    type: integer
+                    description: Total upvote count after this action.
+                required:
+                  - success
+                  - voting
+                  - voteup_count
+  /api/v4/members/{url_token}/followers:
+    post:
+      operationId: followUser
+      summary: Follow a Zhihu user — returns updated follower count
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: zhihu0012
+          tool_version: 1
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "User's url_token (e.g. 'excited-vczh')."
+      responses:
+        "200":
+          description: User followed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  follower_count:
+                    type: integer
+                    description: User's follower count after following.
+                required:
+                  - follower_count
+    delete:
+      operationId: unfollowUser
+      summary: Unfollow a Zhihu user — returns updated follower count
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: zhihu0015
+          tool_version: 1
+      parameters:
+        - name: url_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "User's url_token (e.g. 'excited-vczh')."
+      responses:
+        "200":
+          description: User unfollowed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  follower_count:
+                    type: integer
+                    description: User's follower count after unfollowing.
+                required:
+                  - follower_count
+  /api/v4/questions/{question_id}/followers:
+    post:
+      operationId: followQuestion
+      summary: Follow a question — get notified of new answers
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: zhihu0013
+          tool_version: 1
+          verified: true
+          signals:
+            - status-match
+      parameters:
+        - name: question_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Question ID to follow.
+      responses:
+        "200":
+          description: Question followed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_following:
+                    type: boolean
+                required:
+                  - is_following
+    delete:
+      operationId: unfollowQuestion
+      summary: Unfollow a question — stop receiving new answer notifications
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: zhihu0016
+          tool_version: 1
+      parameters:
+        - name: question_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Question ID to unfollow.
+      responses:
+        "204":
+          description: Question unfollowed. Empty response.

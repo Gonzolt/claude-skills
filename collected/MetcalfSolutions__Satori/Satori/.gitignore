@@ -1,0 +1,55 @@
+# Satori local user memory vault (NEVER commit personal reflections)
+.satori/
+
+# Build artifacts & release archives
+# Release archives and checksum manifest are included for release distribution
+dist/*
+!dist/SatoriSkill-*.zip
+!dist/SHA256SUMS.txt
+
+# Compliance strings checked by scripts/validate_skill.py:
+# dist/
+# *.zip
+
+# Python cache & test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Internal planning & development specifications (maintainer only)
+docs/*-planning/
+docs/planning/
+docs/v6.5-planning/
+*-planning/
+*Product Requirements Document*
+*Marketing Copy Plan*
+*Style Guide*
+*Expert Panel Review*
+*GAP_ANALYSIS*
+*SPEC.md
+*PRD*
+*prd*
+*Scorecard*
+*scorecard*
+*RELEASE_REPORT*
+*release_report*
+*REVIEW*
+*review*
+SATORI_v6.5.2_EVIDENCE_AND_INTEGRITY_RELEASE_REPORT.md
+RESUME.md
+SESSION_HANDOFF.md
+
+# Non-release exploratory research
+scripts/run_hybrid_evals.py
+evals/hybrid_cases.jsonl
+evals/generate_eval_datasets.py
+
+# Ignored directory and recursive contents
+ignored/
+ignored/**

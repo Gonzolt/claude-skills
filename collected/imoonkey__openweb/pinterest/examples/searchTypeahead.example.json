@@ -1,0 +1,17 @@
+{
+  "operation_id": "searchTypeahead",
+  "method": "get",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "source_url": "/",
+        "data": "{\"options\":{\"term\":\"cats\",\"count\":5},\"context\":{}}"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

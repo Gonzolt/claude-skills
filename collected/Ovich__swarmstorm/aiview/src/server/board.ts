@@ -1,0 +1,145 @@
+// The board routes: swarm's board as aiview serves it (D3, D5), read through swarm's BoardReader, a
+// client of the board server (swarm-relay D23). `/api/board` answers one repository's board and
+// every repository; a commit on the server reaches every open tab on aiview's `/events` as
+// `board-changed`. Hides the reader's opening (lazy, or at start when a server is there), and how a
+// request names its repository. The SSE hub and the static page are the server's.
+import fs from "node:fs";
+import type http from "node:http";
+import path from "node:path";
+import { openBoardReader, type BoardReader, type Kind, type StatsScope } from "../../../swarm-board/src/client/reader.ts";
+import type { BoardChangedEventPayload } from "../core/api.ts";
+import { TOOL_ROOT } from "../core/db.ts";
+import { DATA_ROOT } from "../core/home.ts";
+import type { SseHub } from "./sse.ts";
+
+export interface BoardRoutes {
+  /** True when the request was a board route and has been answered (or is being). */
+  handle(req: http.IncomingMessage, res: http.ServerResponse, url: URL): boolean;
+  close(): void;
+}
+
+/** The swarm launcher beside aiview's own, as the plugin lays the two companions out. */
+const DEFAULT_SWARM_ENTRY = path.join(TOOL_ROOT, "..", "swarm-board", "swarm.mjs");
+/** What a running board server writes in its data home: one there, the reader opens at start. */
+const SERVER_STATE_FILE = "swarm-server.json";
+
+export function mountBoard(sse: SseHub, opts: { dataRoot?: string; swarmEntry?: string } = {}): BoardRoutes {
+  const dataRoot = opts.dataRoot ?? DATA_ROOT;
+  const swarmEntry = opts.swarmEntry ?? DEFAULT_SWARM_ENTRY;
+  let reader: BoardReader | null = null;
+  let opening: Promise<BoardReader> | null = null;
+  let stopListening: (() => void) | null = null;
+  let closed = false;
+
+  // One open at a time; a failed one is forgotten, so the next request tries again.
+  const openReader = (): Promise<BoardReader> => {
+    if (reader) return Promise.resolve(reader);
+    opening ??= openBoardReader({ dataRoot, swarmEntry }).then(
+      (opened) => {
+        if (closed) {
+          opened.close();
+          throw new Error("the server is closing");
+        }
+        reader = opened;
+        stopListening = opened.onChange((repo) =>
+          sse.broadcast({ type: "board-changed", repo } satisfies BoardChangedEventPayload),
+        );
+        return opened;
+      },
+      (err: unknown) => {
+        opening = null;
+        throw err;
+      },
+    );
+    return opening;
+  };
+  // Opened at start when a board server is there, so a tab hears board changes before it asks.
+  if (fs.existsSync(path.join(dataRoot, SERVER_STATE_FILE))) openReader().catch(() => {}); // a failure answers on the next request
+
+  const json = (res: http.ServerResponse, obj: unknown, status = 200): void => {
+    if (res.headersSent) return;
+    res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    res.end(JSON.stringify(obj));
+  };
+
+  /** The repository a request names, as swarm's page server resolved it: a run's, a repository, or
+   *  the most recently active; `missing` is the 404's message. `/api/run?id=` kept as `?run=`. */
+  const repoNamed = async (board: BoardReader, url: URL): Promise<{ repo: string } | { missing: string }> => {
+    const run = url.searchParams.get(url.pathname === "/api/run" ? "id" : "run");
+    const key = url.searchParams.get("repo");
+    const repos = await board.repos();
+    if (run !== null) {
+      const repo = repos.find((r) => r.runs.some((x) => x.run === Number(run)))?.repo;
+      return repo ? { repo } : { missing: `no run ${run}` };
+    }
+    if (key !== null) {
+      const repo = repos.find((r) => r.repo === key)?.repo;
+      return repo ? { repo } : { missing: `no repository ${key}` };
+    }
+    const repo = repos[0]?.repo; // the most recently active: repos() lists it first
+    return repo ? { repo } : { missing: "no repository on the board" };
+  };
+
+  /** One repository's whole board. */
+  const answerBoard = async (board: BoardReader, url: URL, res: http.ServerResponse): Promise<void> => {
+    const named = await repoNamed(board, url);
+    if ("missing" in named) return json(res, { error: named.missing }, 404);
+    const [repos, snapshot] = await Promise.all([board.repos(), board.snapshot(named.repo)]);
+    json(res, { repos, snapshot });
+  };
+
+  /** The figures of a scope, `BoardReader.stats()` as it answers; the scope maps the CLI's flags one to one
+   *  (D34): `since=all` is `--all` (no since, every run kept), `closedOnly=1` is `--closed`, `kind` is `--kind`. */
+  const answerStats = async (board: BoardReader, url: URL, res: http.ServerResponse): Promise<void> => {
+    const q = url.searchParams;
+    const key = q.get("repo");
+    // a named repository is read as `swarm stats --repo` reads it, its run whatever its age, pruned with its summary
+    // kept or not in the board's list (plan D40); a run named alone is found among the runs the board lists
+    const named = key !== null ? ((await board.repos()).some((r) => r.repo === key) ? { repo: key } : { missing: `no repository ${key}` }) : await repoNamed(board, url);
+    if ("missing" in named) return json(res, { error: named.missing }, 404);
+    const run = q.get("run");
+    const since = q.get("since");
+    const kinds = (q.get("kind") ?? "").split(",").filter(Boolean) as Kind[];
+    // the keys in the CLI's order, so the two bodies are the same text
+    const scope: StatsScope = {
+      repo: named.repo,
+      ...(run !== null ? { run: Number(run) } : {}),
+      ...(since !== null && since !== "all" ? { since } : {}),
+      ...(kinds.length ? { kinds } : {}),
+      ...(q.get("closedOnly") === "1" ? { closedOnly: true } : {}),
+    };
+    let stats: Awaited<ReturnType<BoardReader["stats"]>>;
+    try {
+      stats = await board.stats(scope);
+    } catch (err) {
+      // a run unknown to the named repository is a 404, as an unknown repository is
+      if (scope.run !== undefined && (err as Error).message === `no run ${scope.run}`) return json(res, { error: (err as Error).message }, 404);
+      throw err;
+    }
+    json(res, stats);
+  };
+
+  const ROUTES = new Map<string, (board: BoardReader, url: URL, res: http.ServerResponse) => Promise<void>>([
+    ["/api/board", answerBoard],
+    ["/api/run", answerBoard],
+    ["/api/stats", answerStats],
+  ]);
+
+  return {
+    handle(req, res, url) {
+      const answer = ROUTES.get(url.pathname);
+      if (!answer) return false;
+      if (req.method !== "GET" && req.method !== "HEAD") return false; // aiview's own 404 answers it
+      openReader()
+        .then((board) => answer(board, url, res))
+        .catch((err: unknown) => json(res, { error: (err as Error).message }, 500));
+      return true;
+    },
+    close() {
+      closed = true;
+      stopListening?.();
+      reader?.close();
+      reader = null;
+    },
+  };
+}

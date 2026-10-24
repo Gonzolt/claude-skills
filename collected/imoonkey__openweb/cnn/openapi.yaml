@@ -1,0 +1,193 @@
+openapi: '3.1.0'
+info:
+  title: CNN
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-09T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.cnn.com
+    x-openweb:
+      transport: page
+paths:
+  /:
+    get:
+      operationId: getHeadlines
+      summary: Get CNN front-page headlines — title, url, content type
+      x-openweb:
+        permission: read
+        adapter:
+          name: cnn
+          operation: getHeadlines
+        page_plan:
+          entry_url: https://www.cnn.com/
+        build:
+          verified: true
+          stable_id: cnn0001
+          signature_id: cnn0001s
+          tool_version: 2
+          signals:
+            - adapter-verified
+      parameters: []
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Front-page headline listing.
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of headline items returned.
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      description: A headline card with title, URL, and optional content type.
+                      required: [title, url]
+                      properties:
+                        title:
+                          type: string
+                          description: Headline text.
+                        url:
+                          type: string
+                          description: Relative URL path (e.g. /2026/04/09/politics/example-story).
+                        contentType:
+                          type: [string, 'null']
+                          description: Link type — article, live-story, video, etc.
+  /{slug}:
+    get:
+      operationId: getArticle
+      summary: Get a CNN article — title, body, author, published date, section
+      x-openweb:
+        permission: read
+        adapter:
+          name: cnn
+          operation: getArticle
+        page_plan:
+          entry_url: https://www.cnn.com/{slug}
+        build:
+          verified: true
+          stable_id: cnn0002
+          signature_id: cnn0002s
+          tool_version: 2
+          signals:
+            - adapter-verified
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Article URL slug (e.g. 2026/04/07/weather/super-el-nino-extreme-weather-climate-disaster).
+          example: '2026/04/07/weather/super-el-nino-extreme-weather-climate-disaster'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Full article content extracted from LD+JSON.
+                required: [title, body]
+                properties:
+                  title:
+                    type: string
+                    description: Article headline.
+                  description:
+                    type: [string, 'null']
+                    description: Article summary / meta description.
+                  author:
+                    type: [string, 'null']
+                    description: Comma-separated author names.
+                  publishedAt:
+                    type: [string, 'null']
+                    description: ISO 8601 publication timestamp.
+                  modifiedAt:
+                    type: [string, 'null']
+                    description: ISO 8601 last modified timestamp.
+                  section:
+                    type: [string, 'null']
+                    description: Article section (e.g. weather, politics, world).
+                  body:
+                    type: [string, 'null']
+                    description: Full article text.
+                  thumbnail:
+                    type: [string, 'null']
+                    description: Thumbnail image URL.
+  /search:
+    get:
+      operationId: searchArticles
+      summary: Search CNN for articles — title, url, description, date
+      x-openweb:
+        permission: read
+        adapter:
+          name: cnn
+          operation: searchArticles
+        page_plan:
+          entry_url: https://www.cnn.com/search
+        build:
+          verified: true
+          stable_id: cnn0003
+          signature_id: cnn0003s
+          tool_version: 2
+          signals:
+            - adapter-verified
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query.
+          example: climate change
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Number of results per page.
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number (1-indexed).
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Search results for the given query.
+                required: [count, results]
+                properties:
+                  count:
+                    type: integer
+                    description: Number of results returned.
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      description: A search result card with title, URL, and metadata.
+                      required: [title, url]
+                      properties:
+                        title:
+                          type: string
+                          description: Article headline.
+                        url:
+                          type: string
+                          description: Relative URL path.
+                        description:
+                          type: [string, 'null']
+                          description: Article snippet or summary.
+                        date:
+                          type: [string, 'null']
+                          description: Publish date text.

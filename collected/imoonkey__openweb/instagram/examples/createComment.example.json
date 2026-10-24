@@ -1,0 +1,18 @@
+{
+  "operation_id": "createComment",
+  "method": "post",
+  "replay_safety": "unsafe_mutation",
+  "cases": [
+    {
+      "input": {
+        "id": "3877961230447408478",
+        "comment_text": "love the team energy 🔥"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ],
+  "order": 1
+}

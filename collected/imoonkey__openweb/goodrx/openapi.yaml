@@ -1,0 +1,219 @@
+openapi: "3.1.0"
+info:
+  title: GoodRx
+  version: "1.1.0"
+  x-openweb:
+    spec_version: "2.0"
+    compiled_at: "2026-04-17T00:00:00Z"
+    requires_auth: false
+servers:
+  - url: https://www.goodrx.com
+    x-openweb:
+      transport: page
+      page_plan:
+        warm: true
+paths:
+  /search:
+    get:
+      operationId: searchDrugs
+      summary: "Search drugs by name — autocomplete results with drug name and URL"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: grx_searchDrugs_v2
+          tool_version: 2
+          signals:
+            - page_global_data
+        adapter: false
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const q = (new URL(location.href).searchParams.get('query') || '').toLowerCase();
+              const links = Array.from(document.querySelectorAll('a[href]'));
+              const seen = new Set();
+              const skip = new Set(['search','gold','care','brand','drugs','health','about','pets','conditions','classes','mobile','discount-card','pharmacy-near-me','how-goodrx-works','healthcare-professionals','out-of-pocket-costs']);
+              const results = [];
+              for (const a of links) {
+                const href = a.getAttribute('href') || '';
+                const m = href.match(/^\/([a-z][a-z0-9-]+)$/);
+                if (!m) continue;
+                const slug = m[1];
+                if (seen.has(slug) || skip.has(slug)) continue;
+                seen.add(slug);
+                const name = (a.textContent || '').trim();
+                if (name.length < 2 || name.length > 50) continue;
+                if (q && !name.toLowerCase().includes(q) && !slug.includes(q)) continue;
+                results.push({ name, url: 'https://www.goodrx.com/' + slug });
+              }
+              return { count: results.length, results };
+            })()
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Drug name to search for (e.g. 'metformin', 'lisinopril')"
+          example: metformin
+      responses:
+        "200":
+          description: Drug search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, results]
+                properties:
+                  count:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                          description: Drug name or suggestion text
+                        url:
+                          type: string
+                          description: URL to the drug pricing page
+
+  /{slug}:
+    get:
+      operationId: getDrugPrices
+      summary: "Get drug price comparison across pharmacies — pharmacy name, coupon price"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: grx_getDrugPrices_v2
+          tool_version: 2
+          signals:
+            - page_global_data
+        adapter: false
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              let drugName = null;
+              const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (const s of scripts) {
+                try {
+                  const d = JSON.parse(s.textContent || '');
+                  if (d['@type'] === 'Drug') { drugName = d.name; break; }
+                } catch (e) { /* skip */ }
+              }
+              const lis = Array.from(document.querySelectorAll('li'));
+              const prices = [];
+              for (const li of lis) {
+                const text = (li.textContent || '').trim();
+                if (!text.includes('$') || text.length > 200) continue;
+                const priceMatch = text.match(/\$(\d+\.\d{2})/);
+                if (!priceMatch) continue;
+                const parts = text.split('$');
+                const pharmacy = parts[0].replace(/Pay online$/i, '').trim();
+                if (pharmacy.length < 2 || pharmacy.length > 60) continue;
+                prices.push({ pharmacy, price: parseFloat(priceMatch[1]) });
+              }
+              return { drugName: drugName || document.title.split(' ')[0], count: prices.length, prices };
+            })()
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Drug slug (e.g. 'metformin', 'lisinopril', 'amoxicillin')"
+          example: metformin
+      responses:
+        "200":
+          description: Pharmacy price comparison for the drug.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, prices]
+                properties:
+                  drugName:
+                    type: string
+                    description: Drug display name
+                  count:
+                    type: integer
+                  prices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pharmacy:
+                          type: string
+                          description: "Pharmacy name (e.g. 'CVS Pharmacy', 'Walgreens')"
+                        price:
+                          type: number
+                          description: Coupon price in USD
+
+  /pharmacy-near-me:
+    get:
+      operationId: getPharmacies
+      summary: "Get nearby pharmacies — pharmacy name, slug, URL"
+      x-openweb:
+        permission: read
+        build:
+          stable_id: grx_getPharmacies_v2
+          tool_version: 2
+          signals:
+            - page_global_data
+        adapter: false
+        extraction:
+          type: page_global_data
+          expression: |
+            (() => {
+              const links = Array.from(document.querySelectorAll('a[href*="/pharmacy/"]'));
+              const seen = new Set();
+              const pharmacies = [];
+              for (const a of links) {
+                const href = a.getAttribute('href') || '';
+                const m = href.match(/\/pharmacy\/([a-z0-9-]+)/);
+                if (!m) continue;
+                const slug = m[1];
+                if (seen.has(slug) || slug === 'near-me' || slug === 'pharmacy-near-me') continue;
+                seen.add(slug);
+                const name = ((a.textContent || '').trim()).split('\n')[0].trim();
+                if (name.length < 2 || name.length > 80) continue;
+                pharmacies.push({ name, slug, url: 'https://www.goodrx.com/pharmacy/' + slug });
+              }
+              return { count: pharmacies.length, pharmacies };
+            })()
+      parameters:
+        - name: zipCode
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "ZIP code for location-based results (e.g. '90210'). Defaults to browser geolocation."
+          example: "90210"
+      responses:
+        "200":
+          description: List of pharmacies near the given location.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, pharmacies]
+                properties:
+                  count:
+                    type: integer
+                  pharmacies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Pharmacy chain name
+                        slug:
+                          type: string
+                          description: URL slug for this pharmacy
+                        url:
+                          type: string
+                          description: Full URL to pharmacy page on GoodRx

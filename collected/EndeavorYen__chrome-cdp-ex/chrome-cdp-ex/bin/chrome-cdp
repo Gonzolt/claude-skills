@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import * as nodeModule from 'node:module';
+
+// The compile cache has to be on before cdp.mjs and its imports are parsed.
+// A static import would compile those modules first, so the runtime is loaded
+// dynamically. Node without enableCompileCache skips this and still re-execs.
+try { nodeModule.enableCompileCache?.(); } catch { /* unwritable cache falls back */ }
+
+const skillRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const cdp = resolve(skillRoot, 'scripts', 'cdp.mjs');
+const { startChromeCdpCli } = await import('../scripts/lib/node-runtime.mjs');
+await startChromeCdpCli({ scriptPath: cdp });

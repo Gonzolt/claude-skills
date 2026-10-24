@@ -1,0 +1,17 @@
+{
+  "operation_id": "getVideoComments",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "oid": 116193444954517,
+        "bvid": "BV1HPNgzFEoq",
+        "type": 1
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

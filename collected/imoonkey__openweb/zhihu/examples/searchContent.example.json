@@ -1,0 +1,18 @@
+{
+  "operation_id": "searchContent",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "limit": 1,
+        "offset": 1,
+        "q": "人工智能",
+        "t": "general"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

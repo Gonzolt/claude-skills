@@ -1,0 +1,1134 @@
+openapi: '3.1.0'
+info:
+  title: gitlab
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+servers:
+- url: https://gitlab.com
+  x-openweb:
+    transport: node
+    auth:
+      type: cookie_session
+    csrf:
+      type: meta_tag
+      name: csrf-token
+      header: X-CSRF-Token
+      scope:
+      - PUT
+      - POST
+      - PATCH
+      - DELETE
+paths:
+  /api/v4/projects:
+    get:
+      operationId: searchProjects
+      summary: Search projects — returns id, name, path_with_namespace, star_count, forks_count, visibility
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: searchProjects
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0001
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Search query string.
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      - name: order_by
+        in: query
+        required: false
+        schema:
+          type: string
+          default: created_at
+        description: 'Order by: created_at, updated_at, name, path, last_activity_at.'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    path_with_namespace:
+                      type: string
+                    description:
+                      type:
+                      - string
+                      - 'null'
+                    web_url:
+                      type: string
+                    star_count:
+                      type: integer
+                    forks_count:
+                      type: integer
+                    default_branch:
+                      type:
+                      - string
+                      - 'null'
+                    visibility:
+                      type: string
+                  required:
+                  - id
+                  - name
+                  - description
+  /api/v4/projects/{projectId}:
+    get:
+      operationId: getProject
+      summary: Get project detail by ID — name, description, star_count, forks_count, default_branch, visibility
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: getProject
+        build:
+          stable_id: gl0002
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  name_with_namespace:
+                    type: string
+                  description:
+                    type:
+                    - string
+                    - 'null'
+                  web_url:
+                    type: string
+                  star_count:
+                    type: integer
+                  forks_count:
+                    type: integer
+                  default_branch:
+                    type:
+                    - string
+                    - 'null'
+                  visibility:
+                    type: string
+                  open_issues_count:
+                    type: integer
+                  last_activity_at:
+                    type: string
+                  created_at:
+                    type: string
+                required:
+                - id
+                - name
+                - description
+  /api/v4/projects/{projectId}/issues:
+    post:
+      operationId: createIssue
+      summary: Create an issue in a project — returns iid, title, state, web_url
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: gl0015
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - title
+              properties:
+                title:
+                  type: string
+                  description: Title of the issue.
+                description:
+                  type: string
+                  description: Description of the issue (Markdown supported).
+                labels:
+                  type: string
+                  description: Comma-separated label names.
+      responses:
+        '201':
+          description: Issue created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  iid:
+                    type: integer
+                  title:
+                    type: string
+                  state:
+                    type: string
+                  description:
+                    type:
+                    - string
+                    - 'null'
+                  web_url:
+                    type: string
+                  labels:
+                    type: array
+                    items:
+                      type: string
+    get:
+      operationId: listProjectIssues
+      summary: List project issues — iid, title, state, labels, description, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: listProjectIssues
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0003
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          default: opened
+        description: 'Filter by state: opened, closed, all.'
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    iid:
+                      type: integer
+                    title:
+                      type: string
+                    state:
+                      type: string
+                    description:
+                      type:
+                      - string
+                      - 'null'
+                    web_url:
+                      type: string
+                    labels:
+                      type: array
+                      items:
+                        type: string
+                    author:
+                      type: object
+                      properties:
+                        username:
+                          type: string
+                        name:
+                          type: string
+                    created_at:
+                      type: string
+                    updated_at:
+                      type: string
+                  required:
+                  - id
+                  - title
+                  - description
+  /api/v4/projects/{projectId}/issues/{issueIid}:
+    put:
+      operationId: closeIssue
+      summary: Close an issue (set state_event to close) — returns iid, title, state, web_url
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: gl0016
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: issueIid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The internal ID of the issue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - state_event
+              properties:
+                state_event:
+                  type: string
+                  enum: [close]
+                  default: close
+      responses:
+        '200':
+          description: Issue closed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  iid:
+                    type: integer
+                  title:
+                    type: string
+                  state:
+                    type: string
+                  web_url:
+                    type: string
+  /api/v4/projects/{projectId}/issues/{issueIid}/notes:
+    post:
+      operationId: createComment
+      summary: Create a comment (note) on an issue — returns id, body, author, created_at
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: gl0017
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: issueIid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The internal ID of the issue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - body
+              properties:
+                body:
+                  type: string
+                  description: The content of the note/comment (Markdown supported).
+      responses:
+        '201':
+          description: Comment created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  body:
+                    type: string
+                  author:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                      name:
+                        type: string
+                  created_at:
+                    type: string
+  /api/v4/projects/{projectId}/issues/{issueIid}/notes/{noteId}:
+    delete:
+      operationId: deleteComment
+      summary: Delete a comment (note) on an issue (reverse of createComment)
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: gl0018
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: issueIid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The internal ID of the issue.
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID of the note to delete.
+      responses:
+        '204':
+          description: Comment deleted (no content).
+  /api/v4/projects/{projectId}/merge_requests:
+    get:
+      operationId: listProjectMergeRequests
+      summary: List project merge requests — iid, title, state, source_branch, target_branch, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: listProjectMergeRequests
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0004
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          default: opened
+        description: 'Filter by state: opened, closed, merged, all.'
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    iid:
+                      type: integer
+                    title:
+                      type: string
+                    state:
+                      type: string
+                    description:
+                      type:
+                      - string
+                      - 'null'
+                    web_url:
+                      type: string
+                    source_branch:
+                      type: string
+                    target_branch:
+                      type: string
+                    author:
+                      type: object
+                      properties:
+                        username:
+                          type: string
+                        name:
+                          type: string
+                    reviewers:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          username:
+                            type: string
+                          name:
+                            type: string
+                    draft:
+                      type: boolean
+                    has_conflicts:
+                      type: boolean
+                    labels:
+                      type: array
+                      items:
+                        type: string
+                    created_at:
+                      type: string
+                    updated_at:
+                      type: string
+                  required:
+                  - id
+                  - title
+                  - description
+  /api/v4/projects/{projectId}/pipelines:
+    get:
+      operationId: listProjectPipelines
+      summary: List project CI/CD pipelines — id, status, ref, sha, source, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: listProjectPipelines
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0005
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Filter by status: running, pending, success, failed, canceled, skipped, manual, scheduled.'
+      - name: ref
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by ref (branch name or tag).
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    iid:
+                      type: integer
+                    project_id:
+                      type: integer
+                    status:
+                      type: string
+                    ref:
+                      type: string
+                    sha:
+                      type: string
+                    source:
+                      type: string
+                    web_url:
+                      type: string
+                    created_at:
+                      type: string
+                    updated_at:
+                      type: string
+                  required:
+                  - id
+  /api/v4/projects/{projectId}/repository/branches:
+    get:
+      operationId: listProjectBranches
+      summary: List project repository branches — name, merged, protected, default, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: listProjectBranches
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0006
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter branches by name substring.
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    merged:
+                      type: boolean
+                    protected:
+                      type: boolean
+                    default:
+                      type: boolean
+                    web_url:
+                      type: string
+                    commit_short_id:
+                      type:
+                      - string
+                      - 'null'
+                    commit_title:
+                      type:
+                      - string
+                      - 'null'
+                  required:
+                  - name
+  /api/v4/projects/{projectId}/repository/files/{filePath}:
+    get:
+      operationId: getProjectFile
+      summary: Get file from repository — file_name, size, encoding, base64 content, last_commit_id
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: getProjectFile
+        build:
+          stable_id: gl0009
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      - name: filePath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: URL-encoded full path to the file (e.g. README%2Emd).
+      - name: ref
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Branch name, tag, or commit SHA.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file_name:
+                    type: string
+                  file_path:
+                    type: string
+                  size:
+                    type: integer
+                  encoding:
+                    type: string
+                  content_sha256:
+                    type: string
+                  ref:
+                    type: string
+                  blob_id:
+                    type: string
+                  last_commit_id:
+                    type: string
+                  content:
+                    type: string
+                required:
+                - content
+  /api/v4/users:
+    get:
+      operationId: searchUsers
+      summary: Search users by name or username — id, username, name, state, avatar_url, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: searchUsers
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0011
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: username
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Exact username to look up.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Search users by name or username.
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    username:
+                      type: string
+                    name:
+                      type: string
+                    state:
+                      type: string
+                    avatar_url:
+                      type: string
+                    web_url:
+                      type: string
+                  required:
+                  - id
+                  - username
+  /api/v4/projects/{projectId}/star:
+    post:
+      operationId: starProject
+      summary: Star a project — returns updated project with new star_count
+      x-openweb:
+        permission: write
+        build:
+          stable_id: gl0012
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      responses:
+        '201':
+          description: Project starred successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  path_with_namespace:
+                    type: string
+                  star_count:
+                    type: integer
+                  web_url:
+                    type: string
+                  visibility:
+                    type: string
+  /api/v4/projects/{projectId}/unstar:
+    post:
+      operationId: unstarProject
+      summary: Unstar a project — returns updated project with new star_count
+      x-openweb:
+        permission: write
+        build:
+          stable_id: gl0013
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the project.
+      responses:
+        '201':
+          description: Project unstarred successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  path_with_namespace:
+                    type: string
+                  star_count:
+                    type: integer
+                  web_url:
+                    type: string
+                  visibility:
+                    type: string
+  /api/v4/groups:
+    get:
+      operationId: searchGroups
+      summary: Search groups by name — id, name, path, description, visibility, web_url
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: searchGroups
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0007
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Search query string.
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    path:
+                      type: string
+                    description:
+                      type:
+                      - string
+                      - 'null'
+                    web_url:
+                      type: string
+                    visibility:
+                      type: string
+                  required:
+                  - id
+                  - name
+                  - description
+  /api/v4/groups/{groupId}:
+    get:
+      operationId: getGroup
+      summary: Get group detail by ID — name, description, visibility, web_url, full_path
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: getGroup
+        build:
+          stable_id: gl0008
+          tool_version: 1
+          verified: true
+          signals:
+          - status-match
+      parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the group.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  path:
+                    type: string
+                  description:
+                    type:
+                    - string
+                    - 'null'
+                  web_url:
+                    type: string
+                  visibility:
+                    type: string
+                  full_path:
+                    type: string
+                required:
+                - id
+                - name
+                - description
+  /api/v4/groups/{groupId}/projects:
+    get:
+      operationId: listGroupProjects
+      summary: List projects within a group — id, name, path_with_namespace, star_count, visibility
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: gitlab
+          operation: listGroupProjects
+        pagination:
+          type: link_header
+        build:
+          stable_id: gl0014
+          tool_version: 1
+          verified: false
+          signals:
+          - status-match
+      parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: The ID or URL-encoded path of the group.
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Number of results per page (max 100).
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Page number.
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    path_with_namespace:
+                      type: string
+                    description:
+                      type:
+                      - string
+                      - 'null'
+                    web_url:
+                      type: string
+                    star_count:
+                      type: integer
+                    forks_count:
+                      type: integer
+                    visibility:
+                      type: string
+                  required:
+                  - id
+                  - name
+                  - description

@@ -1,0 +1,14 @@
+{
+  "operation_id": "closeIssue",
+  "method": "patch",
+  "replay_safety": "unsafe_mutation",
+  "order": 7,
+  "cases": [
+    {
+      "input": { "owner": "imoonkey", "repo": "openweb-test", "issue_number": "${prev.createIssue.number}", "state": "closed" },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "satori",
+  "displayName": "Satori Wisdom Companion",
+  "version": "6.5.2",
+  "description": "Psychologically grounded wisdom companion for navigating emotions, grief, meaning, burnout, relationship conflict, and shadow work.",
+  "author": "Matthew Metcalf",
+  "license": "Apache-2.0",
+  "entry": "SKILL.md",
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {
+      "references/SOUL.md": "6c4ff3280c61fb9c103b4716214e725911da29ef0b82504b5b73bc80dcd6c815"
+    }
+  }
+}

@@ -1,0 +1,363 @@
+openapi: '3.1.0'
+info:
+  title: Walmart
+  version: '2.0'
+  x-openweb:
+    spec_version: '2.0'
+servers:
+- url: https://www.walmart.com
+  x-openweb:
+    transport: node
+paths:
+  /search:
+    get:
+      operationId: searchProducts
+      summary: Search products — name, usItemId, linePrice, averageRating, brand, thumbnailUrl
+      x-openweb:
+        permission: read
+        transport: page
+        page_plan:
+          warm: true
+        build:
+          stable_id: wm0002
+          tool_version: 1
+          verified: true
+          signals:
+          - adapter-verified
+        adapter:
+          name: walmart-read
+          operation: searchProducts
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Search keyword
+      responses:
+        '200':
+          description: Search results with product listings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: [string, "null"]
+                  count:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        usItemId:
+                          type: string
+                        name:
+                          type: string
+                        brand:
+                          type: [string, "null"]
+                        canonicalUrl:
+                          type: [string, "null"]
+                        averageRating:
+                          type: [number, "null"]
+                        numberOfReviews:
+                          type: [integer, "null"]
+                        linePrice:
+                          type: [string, "null"]
+                        wasPrice:
+                          type: [string, "null"]
+                        savings:
+                          type: [string, "null"]
+                        thumbnailUrl:
+                          type: [string, "null"]
+                required:
+                - items
+  /ip/{slug}/{itemId}:
+    get:
+      operationId: getProductDetail
+      summary: Get product detail — name, brand, priceInfo, averageRating, numberOfReviews, imageInfo, sellerName
+      x-openweb:
+        permission: read
+        transport: page
+        page_plan:
+          warm: true
+        build:
+          stable_id: wm0003
+          tool_version: 1
+          verified: true
+          signals:
+          - adapter-verified
+        adapter:
+          name: walmart-read
+          operation: getProductDetail
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product URL slug (any non-empty string works)
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Walmart item ID
+      responses:
+        '200':
+          description: Full product details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  usItemId:
+                    type: [string, "null"]
+                  name:
+                    type: string
+                  brand:
+                    type: [string, "null"]
+                  shortDescription:
+                    type: [string, "null"]
+                    description: Product description (truncated to 2000 chars)
+                  averageRating:
+                    type: [number, "null"]
+                  numberOfReviews:
+                    type: [integer, "null"]
+                  canonicalUrl:
+                    type: [string, "null"]
+                  priceInfo:
+                    type: object
+                    properties:
+                      currentPrice:
+                        type: object
+                        properties:
+                          price:
+                            type: [number, "null"]
+                          priceString:
+                            type: [string, "null"]
+                      wasPrice:
+                        type: [object, "null"]
+                        properties:
+                          price:
+                            type: [number, "null"]
+                          priceString:
+                            type: [string, "null"]
+                      unitPrice:
+                        type: [string, "null"]
+                        description: Formatted unit price (e.g. "14.3 ¢/fl oz")
+                      savingsAmount:
+                        type: [object, "null"]
+                        properties:
+                          amount:
+                            type: [number, "null"]
+                          priceString:
+                            type: [string, "null"]
+                      isPriceReduced:
+                        type: boolean
+                  imageInfo:
+                    type: object
+                    properties:
+                      thumbnailUrl:
+                        type: [string, "null"]
+                      allImages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            url:
+                              type: [string, "null"]
+                  availabilityStatus:
+                    type: [string, "null"]
+                  sellerName:
+                    type: [string, "null"]
+                required:
+                - name
+  /ip/{itemId}:
+    get:
+      operationId: getProductPricing
+      summary: Get product pricing — currentPrice, wasPrice, unitPrice, savingsAmount, isPriceReduced
+      x-openweb:
+        permission: read
+        transport: page
+        page_plan:
+          warm: true
+        build:
+          stable_id: wm0004
+          tool_version: 1
+          verified: true
+          signals:
+          - adapter-verified
+        adapter:
+          name: walmart-read
+          operation: getProductPricing
+      parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Walmart item ID
+      responses:
+        '200':
+          description: Product pricing information.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currentPrice:
+                    type: object
+                    properties:
+                      price:
+                        type: [number, "null"]
+                      priceString:
+                        type: [string, "null"]
+                      currencyUnit:
+                        type: [string, "null"]
+                  wasPrice:
+                    type: [object, "null"]
+                    properties:
+                      price:
+                        type: [number, "null"]
+                      priceString:
+                        type: [string, "null"]
+                  unitPrice:
+                    type: [string, "null"]
+                    description: Formatted unit price (e.g. "14.3 ¢/fl oz")
+                  savingsAmount:
+                    type: [object, "null"]
+                    properties:
+                      amount:
+                        type: [number, "null"]
+                      priceString:
+                        type: [string, "null"]
+                  isPriceReduced:
+                    type: boolean
+                required:
+                - currentPrice
+  /internal/addToCart:
+    post:
+      operationId: addToCart
+      summary: Add product to cart — cartId, cartCount, item (name, quantity, price)
+      x-openweb:
+        permission: write
+        safety: caution
+        transport: page
+        build:
+          stable_id: wm0005
+          tool_version: 1
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: walmart-cart
+          operation: addToCart
+      parameters:
+      - name: usItemId
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Walmart item ID (e.g. "234440748").
+      - name: quantity
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+        description: Quantity to add (default 1).
+      responses:
+        '200':
+          description: Item added to cart successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - cartId
+                - cartCount
+                - item
+                properties:
+                  cartId:
+                    type: string
+                    description: Cart identifier.
+                  cartCount:
+                    type: integer
+                    description: Total number of items in cart.
+                  item:
+                    type: object
+                    required:
+                    - usItemId
+                    - name
+                    - quantity
+                    - price
+                    properties:
+                      usItemId:
+                        type: string
+                      name:
+                        type: string
+                        description: Product name.
+                      quantity:
+                        type: integer
+                      price:
+                        type: number
+                        description: Line price in dollars.
+                      priceString:
+                        type: string
+                        description: Formatted price (e.g. "$142.49").
+                      imageUrl:
+                        type: string
+                        nullable: true
+                        description: Product thumbnail URL (may be null).
+  /internal/removeFromCart:
+    post:
+      operationId: removeFromCart
+      summary: Remove product from cart — cartId, cartCount, removedItemId
+      x-openweb:
+        permission: write
+        safety: caution
+        transport: page
+        build:
+          stable_id: wm0006
+          tool_version: 1
+          verified: false
+          signals:
+          - adapter-verified
+        adapter:
+          name: walmart-cart
+          operation: removeFromCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - usItemId
+              properties:
+                usItemId:
+                  type: string
+                  description: Walmart item ID to remove (e.g. "234440748").
+      responses:
+        '200':
+          description: Item removed from cart successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - cartId
+                - cartCount
+                - removedItemId
+                properties:
+                  cartId:
+                    type: string
+                    description: Cart identifier.
+                  cartCount:
+                    type: integer
+                    description: Total number of items remaining in cart.
+                  removedItemId:
+                    type: string
+                    description: The usItemId that was removed.

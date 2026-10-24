@@ -1,0 +1,19 @@
+{
+  "operation_id": "getFeedRecommend",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "action": "down",
+        "after_id": 1,
+        "desktop": "true",
+        "end_offset": 1,
+        "page_number": 1
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

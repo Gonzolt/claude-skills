@@ -1,0 +1,48 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'"Segoe UI","Microsoft YaHei",sans-serif','fontSize':'14px','lineColor':'#64748b'}}}%%
+flowchart TB
+    classDef archim fill:#4f46e5,stroke:#4338ca,stroke-width:2px,color:#ffffff
+    classDef eval fill:#cffafe,stroke:#0891b2,stroke-width:2px,color:#164e63
+    classDef sec fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,color:#7f1d1d
+    classDef comp fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#7c2d12
+    classDef pat fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a5f
+    classDef mod fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef decision fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+
+    Arch{{"Archimedes<br/>分发评估任务"}}
+    class Arch archim
+
+    subgraph Parallel["并行评估（R2）"]
+        direction LR
+        SE["security-engineer<br/>安全漏洞·侧信道风险<br/>→ 安全分 S_sec"]
+        CA["compliance-analyst<br/>法规·隐私合规<br/>→ 合规分 S_comp"]
+        PE["patentability-evaluator<br/>新颖性·创造性·实用性<br/>→ 可专利性 S_pat"]
+    end
+    class Parallel fill:#f8fafc,stroke:#94a3b8
+    class SE sec
+    class CA comp
+    class PE pat
+
+    BM{{"brainstorm-moderator<br/>聚合·加权·决策"}}
+    class BM mod
+
+    GATE{"阈值门禁<br/>S = 0.3·S_sec + 0.3·S_comp + 0.4·S_pat<br/>S ≥ 8.5 且 各维 ≥ 6.0 → PASS"}
+    class GATE decision
+
+    Arch -->|"并行 fan-out"| SE
+    Arch -->|"并行 fan-out"| CA
+    Arch -->|"并行 fan-out"| PE
+
+    SE -->|"S_sec"| BM
+    CA -->|"S_comp"| BM
+    PE -->|"S_pat"| BM
+
+    BM --> GATE
+    GATE -->|"PASS"| DRAFT["进入 DRAFT 阶段"]
+    GATE -->|"FAIL<br/>或 maxRounds>3"| R1["回退 BRAINSTORM_R1"]
+
+    class DRAFT fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class R1 fill:#fef3c7,stroke:#f59e0b,color:#78350f
+
+    style SE fill:#fee2e2
+    style CA fill:#fed7aa
+    style PE fill:#dbeafe

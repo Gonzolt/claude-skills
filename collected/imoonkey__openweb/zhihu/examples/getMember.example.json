@@ -1,0 +1,15 @@
+{
+  "operation_id": "getMember",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "url_token": "excited-vczh"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

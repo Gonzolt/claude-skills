@@ -1,0 +1,18 @@
+# robertguss/claude-code-toolkit
+
+Copied from https://github.com/robertguss/claude-code-toolkit (license: **MIT**). The upstream license file is kept in this folder. All credit goes to the original authors.
+
+| Skill | Upstream path | What it does |
+|---|---|---|
+| [app-store-opportunity-research](app-store-opportunity-research/) | `skills/app-store-opportunity-research` | Full-pipeline iOS App Store opportunity research. Discovers underserved niches, analyzes competitor gaps, estimates revenue, produces scored top-3 opportunity reports, and writes MVP PRDs — all thr… |
+| [dhh-writing](dhh-writing/) | `plugins/compound-writing/skills/dhh-writing` | This skill should be used when writing in the distinctive style of David Heinemeier Hansson (DHH). It applies when creating blog posts, technical articles, business content, manifestos, or any pros… |
+| [ebook-concept-development](ebook-concept-development/) | `skills/ebook-factory/ebook-concept-development` | Develop ebook ideas into structured concepts ready for architecture. Use when the user has an ebook idea (from a brainstorm document, existing content to repurpose, a book section to extract, or a… |
+| [ebook-discovery](ebook-discovery/) | `skills/ebook-factory/ebook-discovery` | Surface ebook ideas you didn't know you had. Use when ready to discover what ebooks might be hiding in your content, expertise, or thinking. Supports both content-rich creators (blog posts, videos,… |
+| [every-style-editor](every-style-editor/) | `plugins/compound-writing/skills/every-style-editor` | This skill should be used when reviewing or editing copy to ensure adherence to Every's style guide. It provides a systematic line-by-line review process for grammar, punctuation, mechanics, and st… |
+| [handoff](handoff/) | `skills/handoff` | Create a structured session handoff document for continuity across sessions. Use when ending a work session, switching contexts, or before a break. Captures decisions, progress, code changes, and n… |
+| [lead](lead/) | `skills/lead` | Run a project as the lead: write briefs, hand each one to a fresh Opus worker in Herdr, watch it, verify its work with your own probes, and report. The loop never stops to ask. |
+| [pragmatic-writing](pragmatic-writing/) | `plugins/compound-writing/skills/pragmatic-writing` | This skill should be used when writing technical content in the style of Hunt/Thomas (The Pragmatic Programmer) and Joel Spolsky (Joel on Software). It applies when creating technical essays, docum… |
+| [project-wiki](project-wiki/) | `skills/project-wiki` | Build and keep a Karpathy-style LLM wiki inside a repo, as a project record or a research vault, with a schema, an index, a log, a lint, and a Quartz site on GitHub Pages. |
+| [skill-creator](skill-creator/) | `.claude/skills/skill-creator` | Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, wor… |
+| [voice-capture](voice-capture/) | `plugins/compound-writing/skills/voice-capture` | This skill should be used when extracting voice profiles from sample text, creating voice documentation, or matching a specific writing style. It applies when users provide sample text and want to… |
+| [writing-orchestration](writing-orchestration/) | `plugins/compound-writing/skills/writing-orchestration` | This skill should be used when orchestrating complex writing workflows with multiple phases. It provides two-agent orchestration patterns, the two-gate content readiness assessment, 10 baseline wri… |

@@ -1,0 +1,18 @@
+{
+  "operation_id": "searchUsers",
+  "method": "get",
+  "replay_safety": "safe_read",
+  "cases": [
+    {
+      "input": {
+        "query": "nasa",
+        "context": "blended",
+        "include_reel": "true"
+      },
+      "assertions": {
+        "status": 200,
+        "response_schema_valid": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,646 @@
+openapi: '3.1.0'
+info:
+  title: Telegram Web
+  version: '2.1'
+  x-openweb:
+    spec_version: '2.0'
+servers:
+  - url: https://web.telegram.org/a/
+    x-openweb:
+      transport: page
+paths:
+  /internal/chats:
+    get:
+      operationId: getChats
+      summary: List user's chats — id, title, type, membersCount, lastMessageDate
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0001
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: getChats
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Max number of chats to return
+      responses:
+        '200':
+          description: Array of chat objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: [string, 'null']
+                    type:
+                      type: string
+                      enum: [chatTypePrivate, chatTypeBasicGroup, chatTypeSuperGroup, chatTypeChannel]
+                    membersCount:
+                      type: integer
+                    unreadCount:
+                      type: integer
+                    lastMessageDate:
+                      type: integer
+                      description: Unix timestamp of the last message
+                  required:
+                    - id
+                    - type
+
+  /internal/messages:
+    get:
+      operationId: getMessages
+      summary: Get messages from a chat — id, text, senderName, date, isOutgoing
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0002
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: getMessages
+      parameters:
+        - name: chatId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Chat ID (e.g. -1001625429257)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Max messages to return
+        - name: offsetId
+          in: query
+          schema:
+            type: integer
+          description: Message ID to start pagination from (exclusive, returns older messages)
+      responses:
+        '200':
+          description: Array of message objects sorted by date descending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    chatId:
+                      type: string
+                    date:
+                      type: integer
+                      description: Unix timestamp
+                    text:
+                      type: string
+                    senderId:
+                      type: [string, 'null']
+                    senderName:
+                      type: [string, 'null']
+                    isOutgoing:
+                      type: boolean
+                  required:
+                    - id
+                    - chatId
+                    - date
+
+  /internal/search:
+    get:
+      operationId: searchMessages
+      summary: Search messages by keyword — id, text, chatTitle, senderName, date
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0003
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: searchMessages
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query string
+        - name: chatId
+          in: query
+          schema:
+            type: string
+          description: Optional chat ID to search within (omit for global search)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Max results to return
+      responses:
+        '200':
+          description: Array of matching messages with chat context
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    chatId:
+                      type: string
+                    chatTitle:
+                      type: [string, 'null']
+                    date:
+                      type: integer
+                    text:
+                      type: string
+                    senderId:
+                      type: [string, 'null']
+                    senderName:
+                      type: [string, 'null']
+                  required:
+                    - id
+                    - chatId
+                    - date
+                    - text
+
+  /internal/user:
+    get:
+      operationId: getUserInfo
+      summary: Get user profile by ID — firstName, username, status, isPremium, phoneNumber
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0004
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: getUserInfo
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User ID to look up
+      responses:
+        '200':
+          description: User profile object (null if not found)
+          content:
+            application/json:
+              schema:
+                type: object
+                nullable: true
+                properties:
+                  id:
+                    type: string
+                  firstName:
+                    type: string
+                  lastName:
+                    type: [string, 'null']
+                  username:
+                    type: [string, 'null']
+                  phoneNumber:
+                    type: string
+                  type:
+                    type: string
+                  status:
+                    type: [string, 'null']
+                  isPremium:
+                    type: boolean
+                required:
+                  - id
+
+  /internal/me:
+    get:
+      operationId: getMe
+      summary: Get current user — id, firstName, username, isPremium
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0005
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: getMe
+      responses:
+        '200':
+          description: Current user object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  firstName:
+                    type: string
+                  lastName:
+                    type: string
+                  username:
+                    type: [string, 'null']
+                  phoneNumber:
+                    type: string
+                  isPremium:
+                    type: boolean
+                required:
+                  - id
+
+  /internal/messages/send:
+    post:
+      operationId: sendMessage
+      summary: Send a text message to a chat — returns success, chatId, text
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0006
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                  description: Target chat ID
+                text:
+                  type: string
+                  description: Message text to send
+              required:
+                - chatId
+                - text
+      responses:
+        '200':
+          description: Send confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string
+                  text:
+                    type: string
+
+  /internal/messages/delete:
+    post:
+      operationId: deleteMessage
+      summary: Delete a message from a chat — returns success, chatId, messageId
+      x-openweb:
+        permission: write
+        safety: caution
+        build:
+          stable_id: tg0007
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: deleteMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                  description: Chat ID containing the message
+                messageId:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: [latest]
+                  description: ID of the message to delete, or "latest" for most recent outgoing message
+              required:
+                - chatId
+                - messageId
+      responses:
+        '200':
+          description: Delete confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string
+                  messageId:
+                    type: integer
+
+  /internal/contacts:
+    get:
+      operationId: getContacts
+      summary: Get user's contact list — id, firstName, lastName, username, phoneNumber, status
+      x-openweb:
+        permission: read
+        build:
+          stable_id: tg0008
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: getContacts
+      responses:
+        '200':
+          description: Array of contact objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    firstName:
+                      type: string
+                    lastName:
+                      type: [string, 'null']
+                    username:
+                      type: [string, 'null']
+                    phoneNumber:
+                      type: [string, 'null']
+                    status:
+                      type: [string, 'null']
+                  required: [id]
+
+  /internal/messages/edit:
+    post:
+      operationId: editMessage
+      summary: Edit a text message — returns success, chatId, messageId, text
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0009
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: editMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                messageId:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: [latest]
+                  description: Message ID, or "latest" for most recent outgoing message
+                text:
+                  type: string
+              required: [chatId, messageId, text]
+      responses:
+        '200':
+          description: Edit confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string
+                  messageId:
+                    type: integer
+                  text:
+                    type: string
+
+  /internal/messages/forward:
+    post:
+      operationId: forwardMessages
+      summary: Forward messages from one chat to another
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0010
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: forwardMessages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromChatId:
+                  type: string
+                toChatId:
+                  type: string
+                messageIds:
+                  type: array
+                  items:
+                    oneOf:
+                      - type: integer
+                      - type: string
+                        enum: [latest]
+              required: [fromChatId, toChatId, messageIds]
+      responses:
+        '200':
+          description: Forward confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  fromChatId:
+                    type: string
+                  toChatId:
+                    type: string
+                  messageIds:
+                    type: array
+                    items:
+                      type: integer
+
+  /internal/messages/pin:
+    post:
+      operationId: pinMessage
+      summary: Pin a message in a chat
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0011
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: pinMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                messageId:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: [latest]
+                  description: Message ID, or "latest" for most recent outgoing message
+                silent:
+                  type: boolean
+                  default: false
+                  description: Pin without notification
+              required: [chatId, messageId]
+      responses:
+        '200':
+          description: Pin confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string
+                  messageId:
+                    type: integer
+
+  /internal/messages/unpin:
+    post:
+      operationId: unpinMessage
+      summary: Unpin a message in a chat
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0012
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: unpinMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                messageId:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: [latest]
+                  description: Message ID, or "latest" for most recent pinned/outgoing message
+              required: [chatId, messageId]
+      responses:
+        '200':
+          description: Unpin confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string
+                  messageId:
+                    type: integer
+
+  /internal/messages/read:
+    post:
+      operationId: markAsRead
+      summary: Mark all messages in a chat as read
+      x-openweb:
+        permission: write
+        build:
+          stable_id: tg0013
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: telegram-protocol
+          operation: markAsRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+              required: [chatId]
+      responses:
+        '200':
+          description: Read confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chatId:
+                    type: string

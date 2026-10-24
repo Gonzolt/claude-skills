@@ -1,0 +1,368 @@
+openapi: '3.1.0'
+info:
+  title: Starbucks
+  version: '1.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+  - url: https://www.starbucks.com
+    x-openweb:
+      transport: page
+paths:
+  /apiproxy/v1/locations:
+    get:
+      operationId: searchStores
+      summary: Find nearby Starbucks stores by coordinates — trimmed store list with address, hours, amenities, distance, mobile ordering
+      x-openweb:
+        permission: read
+        adapter:
+          name: starbucks
+          operation: searchStores
+        build:
+          stable_id: sbux0001
+          tool_version: 3
+          verified: true
+          signals:
+            - adapter-verified
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Latitude of search center.
+          example: 37.7749
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Longitude of search center.
+          example: -122.4194
+      responses:
+        '200':
+          description: Nearby Starbucks stores sorted by distance.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Array of store entries sorted by distance from search center.
+                items:
+                  type: object
+                  properties:
+                    distance:
+                      type: number
+                      description: Distance in miles from search center.
+                    store:
+                      type: object
+                      description: Store details.
+                      properties:
+                        storeNumber:
+                          type: string
+                          description: Unique store number.
+                        name:
+                          type: string
+                          description: Store display name.
+                        phoneNumber:
+                          type:
+                            - string
+                            - 'null'
+                          description: Store phone number.
+                        open:
+                          type: boolean
+                          description: Whether the store is currently open.
+                        isOpen24Hours:
+                          type: boolean
+                          description: Whether the store operates 24 hours.
+                        openStatus:
+                          type: string
+                          description: Human-readable open status.
+                        hours:
+                          type: string
+                          description: Today's hours.
+                        address:
+                          type: object
+                          description: Store address.
+                          properties:
+                            streetAddress:
+                              type: string
+                            city:
+                              type: string
+                            state:
+                              type: string
+                            postalCode:
+                              type: string
+                            country:
+                              type: string
+                            singleLine:
+                              type: string
+                        coordinates:
+                          type: object
+                          description: Store geographic coordinates.
+                          properties:
+                            latitude:
+                              type: number
+                            longitude:
+                              type: number
+                        schedule:
+                          type: array
+                          description: Weekly operating schedule.
+                          items:
+                            type: object
+                            properties:
+                              day:
+                                type: string
+                              hours:
+                                type: string
+                              open:
+                                type: boolean
+                        amenities:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                              name:
+                                type: string
+                        mobileOrdering:
+                          type: object
+                          properties:
+                            available:
+                              type: boolean
+                            guestOrdering:
+                              type: boolean
+                        ownershipType:
+                          type: string
+                          description: Ownership type code (CO = company-owned, LS = licensed).
+                        slug:
+                          type: string
+                          description: URL slug for the store page.
+
+  /stores/detail:
+    get:
+      operationId: getStoreDetail
+      summary: Get full store details — address, weekly schedule, amenities, mobile ordering, coordinates
+      x-openweb:
+        permission: read
+        build:
+          stable_id: sbux0002
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: starbucks
+          operation: getStoreDetail
+      parameters:
+        - name: storeNumber
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Store number from searchStores.
+          example: '53646-283069'
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Approximate latitude of the store (from searchStores).
+          example: 37.7772
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Approximate longitude of the store (from searchStores).
+          example: -122.4193
+      responses:
+        '200':
+          description: Full store details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - storeNumber
+                  - name
+                properties:
+                  storeNumber:
+                    type: string
+                    description: Unique store number.
+                  name:
+                    type: string
+                    description: Store display name.
+                  phoneNumber:
+                    type:
+                      - string
+                      - 'null'
+                    description: Store phone number.
+                  open:
+                    type: boolean
+                    description: Whether the store is currently open.
+                  isOpen24Hours:
+                    type: boolean
+                    description: Whether the store operates 24 hours.
+                  openStatus:
+                    type: string
+                    description: Human-readable open status.
+                  hours:
+                    type: string
+                    description: Today's hours.
+                  address:
+                    type: object
+                    required:
+                      - singleLine
+                    description: Store address.
+                    properties:
+                      streetAddress:
+                        type: string
+                        description: Street address line.
+                      city:
+                        type: string
+                        description: City name.
+                      state:
+                        type: string
+                        description: State or province code.
+                      postalCode:
+                        type: string
+                        description: Postal/ZIP code.
+                      country:
+                        type: string
+                        description: Country code (e.g. "US").
+                      singleLine:
+                        type: string
+                        description: Full address as a single line.
+                  coordinates:
+                    type: object
+                    required:
+                      - latitude
+                      - longitude
+                    description: Store geographic coordinates.
+                    properties:
+                      latitude:
+                        type: number
+                        description: Store latitude.
+                      longitude:
+                        type: number
+                        description: Store longitude.
+                  schedule:
+                    type: array
+                    description: Weekly operating schedule.
+                    items:
+                      type: object
+                      required:
+                        - day
+                        - open
+                      properties:
+                        day:
+                          type: string
+                          description: Day of the week (e.g. "Monday").
+                        hours:
+                          type: string
+                          description: Hours for that day (e.g. "4:30 AM-8:00 PM").
+                        open:
+                          type: boolean
+                          description: Whether the store is open on that day.
+                  amenities:
+                    type: array
+                    description: Store amenities and features.
+                    items:
+                      type: object
+                      required:
+                        - code
+                        - name
+                      properties:
+                        code:
+                          type: string
+                          description: Amenity code identifier.
+                        name:
+                          type: string
+                          description: Human-readable amenity name.
+                  mobileOrdering:
+                    type: object
+                    required:
+                      - available
+                    description: Mobile ordering status.
+                    properties:
+                      available:
+                        type: boolean
+                        description: Whether mobile ordering is available.
+                      guestOrdering:
+                        type: boolean
+                        description: Whether guest (non-account) ordering is supported.
+                  ownershipType:
+                    type: string
+                    description: Ownership type code (CO = company-owned, LS = licensed).
+                  slug:
+                    type: string
+                    description: URL slug for the store page.
+
+  /apiproxy/v1/ordering/menu:
+    get:
+      operationId: getMenu
+      summary: Get Starbucks menu — categories, subcategories, products with sizes, availability, and images
+      x-openweb:
+        permission: read
+        adapter:
+          name: starbucks
+          operation: getMenu
+        build:
+          stable_id: sbux0003
+          tool_version: 3
+          verified: true
+          signals:
+            - adapter-verified
+      parameters: []
+      responses:
+        '200':
+          description: Full menu with categories, subcategories, and products.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  menus:
+                    type: array
+                    description: Top-level menu categories.
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Category name (e.g. "Drinks", "Food").
+                        imageURL:
+                          type: string
+                          description: Category image URL (when available).
+                        children:
+                          type: array
+                          description: Subcategories.
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                              imageURL:
+                                type: string
+                              products:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    name:
+                                      type: string
+                                    productType:
+                                      type: string
+                                    availability:
+                                      type: string
+                                    imageURL:
+                                      type: string
+                                    sizes:
+                                      type: array
+                                      items:
+                                        type: string
+                              children:
+                                type: array
+                                description: Nested subcategories.

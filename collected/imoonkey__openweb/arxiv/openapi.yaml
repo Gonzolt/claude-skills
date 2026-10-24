@@ -1,0 +1,147 @@
+openapi: '3.1.0'
+info:
+  title: arXiv
+  version: '1.0.0'
+  x-openweb:
+    spec_version: '2.0'
+    requires_auth: false
+servers:
+  - url: https://export.arxiv.org
+    x-openweb:
+      transport: node
+paths:
+  /api/query:
+    get:
+      operationId: searchPapers
+      summary: Search arXiv papers by keyword, author, or category — returns titles, authors, abstracts, categories, links
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: arxiv
+          operation: searchPapers
+        build:
+          stable_id: arxiv0001
+          tool_version: 2
+      parameters:
+        - name: search_query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Search query using arXiv query syntax. Prefix with field: all, ti (title), au (author), abs (abstract), cat (category). Multi-word queries are auto-ANDed. Examples: "all:diffusion models", "ti:attention mechanism", "au:hinton", "cat:cs.AI", "ti:BERT AND cat:cs.CL".'
+          example: 'all:diffusion models'
+        - name: max_results
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Maximum number of results to return (max 100).
+          example: 5
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination.
+          example: 0
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [relevance, lastUpdatedDate, submittedDate]
+          description: Sort order for results.
+          example: relevance
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ascending, descending]
+          description: Sort direction.
+          example: descending
+      responses:
+        '200':
+          description: Search results with paper metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_results:
+                    type: integer
+                  papers:
+                    type: array
+                    items:
+                      type: object
+  /query:
+    get:
+      operationId: getPaper
+      summary: Get paper metadata by arXiv ID — title, authors, abstract, categories, PDF link
+      servers:
+        - url: https://export.arxiv.org/api
+          x-openweb:
+            transport: node
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: arxiv
+          operation: getPaper
+        build:
+          stable_id: arxiv0002
+          tool_version: 2
+      parameters:
+        - name: id_list
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Comma-separated arXiv paper IDs. Examples: "2301.07041", "1706.03762", "2301.07041,1706.03762".'
+          example: '1706.03762'
+      responses:
+        '200':
+          description: Paper metadata for the requested ID(s). Single ID returns an object, multiple IDs return an array.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                  - type: array
+                    items:
+                      type: object
+  /abs/{arxiv_id}:
+    get:
+      operationId: getAbstract
+      summary: Get the abstract page for a paper — title, authors, abstract text, categories, submission dates
+      servers:
+        - url: https://arxiv.org
+          x-openweb:
+            transport: node
+      x-openweb:
+        permission: read
+        transport: node
+        adapter:
+          name: arxiv
+          operation: getAbstract
+        build:
+          stable_id: arxiv0003
+          tool_version: 2
+      parameters:
+        - name: arxiv_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'arXiv paper ID (e.g. "1706.03762" or "2301.07041v2").'
+          example: '1706.03762'
+      responses:
+        '200':
+          description: Paper metadata extracted from the abstract page.
+          content:
+            application/json:
+              schema:
+                type: object

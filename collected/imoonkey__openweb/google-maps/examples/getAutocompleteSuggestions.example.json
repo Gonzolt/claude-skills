@@ -1,0 +1,14 @@
+{
+  "operation_id": "getAutocompleteSuggestions",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "input": "Statue of Liberty"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

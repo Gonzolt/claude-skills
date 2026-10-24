@@ -1,0 +1,424 @@
+openapi: '3.1.0'
+info:
+  title: Airbnb
+  version: '1.2.0'
+  x-openweb:
+    spec_version: '2.0'
+    compiled_at: '2026-04-11T00:00:00Z'
+    requires_auth: false
+servers:
+  - url: https://www.airbnb.com
+    x-openweb:
+      transport: page
+paths:
+  /s/homes:
+    get:
+      operationId: searchListings
+      summary: Search accommodation listings by destination, dates, and guests
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ab0001
+          signature_id: ab0001s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: airbnb
+          operation: searchListings
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 'Destination search query (e.g. "Tokyo", "Paris", "New York").'
+          example: Tokyo
+        - name: checkin
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Check-in date in YYYY-MM-DD format.
+          example: '2026-05-01'
+        - name: checkout
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Check-out date in YYYY-MM-DD format.
+          example: '2026-05-03'
+        - name: adults
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Number of adult guests.
+          example: 2
+        - name: children
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Number of children.
+          example: 0
+        - name: infants
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Number of infants.
+          example: 0
+        - name: price_min
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Minimum nightly price filter in local currency.
+          example: 50
+        - name: price_max
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Maximum nightly price filter in local currency.
+          example: 300
+        - name: room_types[]
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Entire home/apt, Private room, Shared room]
+          description: Room type filter.
+          example: Entire home/apt
+      responses:
+        '200':
+          description: Search results from SSR HTML fetch.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [searchResults]
+                properties:
+                  searchResults:
+                    type: array
+                    description: Accommodation listings matching the search criteria (up to 18 per page).
+                    items:
+                      type: object
+                      required: [title]
+                      description: A single listing from search results.
+                      properties:
+                        title:
+                          type: string
+                          description: Listing title.
+                        avgRatingLocalized:
+                          type: [string, 'null']
+                          description: 'Localized average rating string (e.g. "4.95").'
+                        structuredDisplayPrice:
+                          type: object
+                          description: Price display object with formatted pricing details.
+                        demandStayListing:
+                          type: object
+                          description: 'Listing metadata including base64-encoded ID (format: DemandStayListing:<numeric_id>).'
+                        contextualPictures:
+                          type: array
+                          description: Listing photos for display.
+                          items:
+                            type: object
+                            description: A single listing photo with URL and caption.
+                  paginationInfo:
+                    type: object
+                    description: Cursor-based pagination metadata.
+                    properties:
+                      nextPageCursor:
+                        type: [string, 'null']
+                        description: Cursor for the next page of results; null if no more pages.
+
+  /rooms/{id}:
+    get:
+      operationId: getListingDetail
+      summary: Get full listing details — description, ratings, amenities, host info, policies
+      x-openweb:
+        permission: read
+        build:
+          verified: true
+          stable_id: ab0002
+          signature_id: ab0002s
+          tool_version: 2
+          signals:
+            - adapter-verified
+        adapter:
+          name: airbnb
+          operation: getListingDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Listing ID from searchListings results.
+          example: '20713816'
+        - name: check_in
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Check-in date in YYYY-MM-DD format (affects pricing).
+          example: '2026-05-01'
+        - name: check_out
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Check-out date in YYYY-MM-DD format (affects pricing).
+          example: '2026-05-03'
+        - name: adults
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Number of adult guests.
+          example: 2
+      responses:
+        '200':
+          description: Listing detail page data from SSR HTML fetch.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sections]
+                properties:
+                  sections:
+                    type: object
+                    required: [sections]
+                    description: Section-based page layout container.
+                    properties:
+                      sections:
+                        type: array
+                        description: 'Page sections (e.g. REVIEWS_DEFAULT, LOCATION_DEFAULT, AMENITIES_DEFAULT).'
+                        items:
+                          type: object
+                          description: A single page section with its content.
+                          properties:
+                            sectionId:
+                              type: [string, 'null']
+                              description: 'Section identifier (e.g. "REVIEWS_DEFAULT", "LOCATION_DEFAULT").'
+                            section:
+                              type: [object, 'null']
+                              description: Section content payload; structure varies by sectionId.
+                      metadata:
+                        type: object
+                        description: Page-level metadata (listing title, location, sharing info).
+
+  /api/v3/StaysPdpReviewsQuery/2ed951bfedf71b87d9d30e24a419e15517af9fbed7ac560a8d1cc7feadfa22e6:
+    get:
+      operationId: getListingReviews
+      summary: Get reviews for a listing — ratings, reviewer info, review text (Relay GET APQ)
+      servers:
+        - url: https://www.airbnb.com
+          x-openweb:
+            transport: node
+            headers:
+              User-Agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+              Accept-Language: 'en-US,en;q=0.9'
+              X-Airbnb-API-Key: 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+              X-Airbnb-GraphQL-Platform-Client: 'minimalist-niobe'
+              X-Airbnb-GraphQL-Platform: 'web'
+      x-openweb:
+        permission: read
+        adapter: false
+        unwrap: 'data.presentation.stayProductDetailPage.reviews'
+        graphql_hash: '2ed951bfedf71b87d9d30e24a419e15517af9fbed7ac560a8d1cc7feadfa22e6'
+        build:
+          stable_id: ab0003
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: operationName
+          in: query
+          required: true
+          schema:
+            type: string
+            const: StaysPdpReviewsQuery
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+            default: en
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+            default: USD
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              description: 'GraphQL variables packed into ?variables= query param per Relay GET APQ.'
+              properties:
+                id:
+                  type: string
+                  description: |-
+                    Base64 of "StayListing:<numeric_id>". Agents compute via
+                    `Buffer.from('StayListing:' + numericId).toString('base64')`.
+                  example: U3RheUxpc3Rpbmc6MjA3MTM4MTY=
+                pdpReviewsRequest:
+                  type: object
+                  description: Review query shape; defaults match Airbnb web client.
+                  properties:
+                    fieldSelector:
+                      type: string
+                      default: for_p3_translation_only
+                    forPreview:
+                      type: boolean
+                      default: false
+                    limit:
+                      type: integer
+                      default: 24
+                    offset:
+                      type: string
+                      default: '0'
+                    showingTranslationButton:
+                      type: boolean
+                      default: false
+                    first:
+                      type: integer
+                      default: 24
+                    sortingPreference:
+                      type: string
+                      default: BEST_QUALITY
+      responses:
+        '200':
+          description: Reviews payload from Relay GET APQ call.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: 'Unwrapped via x-openweb.unwrap to presentation.stayProductDetailPage.reviews.'
+
+  /api/v3/PdpAvailabilityCalendar/b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914:
+    get:
+      operationId: getListingAvailability
+      summary: Get availability calendar for a listing (Relay GET APQ)
+      servers:
+        - url: https://www.airbnb.com
+          x-openweb:
+            transport: node
+            headers:
+              User-Agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+              Accept-Language: 'en-US,en;q=0.9'
+              X-Airbnb-API-Key: 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+              X-Airbnb-GraphQL-Platform-Client: 'minimalist-niobe'
+              X-Airbnb-GraphQL-Platform: 'web'
+      x-openweb:
+        permission: read
+        adapter: false
+        unwrap: 'data.merlin.pdpAvailabilityCalendar'
+        graphql_hash: 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
+        build:
+          stable_id: ab0004
+          tool_version: 2
+          verified: true
+      parameters:
+        - name: operationName
+          in: query
+          required: true
+          schema:
+            type: string
+            const: PdpAvailabilityCalendar
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+            default: en
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+            default: USD
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request]
+              description: 'GraphQL variables packed into ?variables= query param per Relay GET APQ.'
+              properties:
+                request:
+                  type: object
+                  required: [listingId, month, year]
+                  properties:
+                    listingId:
+                      type: string
+                      description: Raw numeric listing ID (unencoded).
+                      example: '20713816'
+                    month:
+                      type: integer
+                      description: Calendar month (1-12) to start the window.
+                      example: 6
+                    year:
+                      type: integer
+                      description: Calendar year (YYYY).
+                      example: 2026
+                    count:
+                      type: integer
+                      default: 12
+                      description: Number of consecutive months to return.
+      responses:
+        '200':
+          description: Calendar payload from Relay GET APQ call.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: 'Unwrapped via x-openweb.unwrap to merlin.pdpAvailabilityCalendar.'
+
+  /users/{hostId}:
+    get:
+      operationId: getHostProfile
+      summary: Get host profile — superhost status, response rate, about, listings
+      x-openweb:
+        permission: read
+        build:
+          stable_id: ab0005
+          tool_version: 2
+          verified: true
+          signals:
+            - adapter-verified
+        adapter:
+          name: airbnb
+          operation: getHostProfile
+      parameters:
+        - name: hostId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Host user ID from listing detail host section.
+          example: '95592328'
+      responses:
+        '200':
+          description: Host profile data from browser SSR extraction.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hostId, profile]
+                properties:
+                  hostId:
+                    type: string
+                    description: The host user ID.
+                  profile:
+                    type: object
+                    description: Full host presentation data (superhost status, response rate, about, listings).

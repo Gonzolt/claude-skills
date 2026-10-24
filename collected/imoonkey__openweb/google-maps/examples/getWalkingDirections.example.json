@@ -1,0 +1,15 @@
+{
+  "operation_id": "getWalkingDirections",
+  "method": "get",
+  "cases": [
+    {
+      "input": {
+        "origin": "Central Park, New York",
+        "destination": "Times Square, New York"
+      },
+      "assertions": {
+        "status": 200
+      }
+    }
+  ]
+}

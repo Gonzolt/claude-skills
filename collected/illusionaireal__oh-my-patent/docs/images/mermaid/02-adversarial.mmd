@@ -1,0 +1,54 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'"Segoe UI","Microsoft YaHei",sans-serif','fontSize':'14px','lineColor':'#64748b'}}}%%
+flowchart LR
+    classDef arch fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a5f
+    classDef attack fill:#fecaca,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+    classDef mod fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef output fill:#d1fae5,stroke:#10b981,stroke-width:1.5px,color:#064e3b
+    classDef path fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155,stroke-dasharray:3 3
+    classDef archim fill:#4f46e5,stroke:#4338ca,stroke-width:2px,color:#ffffff
+
+    Arch{{Archimedes<br/>主编排器}}
+    class Arch archim
+
+    subgraph Innovation["创新点生成"]
+        IA["innovation-architect<br/>TRIZ生成候选方案"]
+    end
+    class Innovation arch
+    class IA arch
+
+    subgraph Attack["对抗性质疑"]
+        AE["adversarial-examiner<br/>模拟审查员攻击"]
+    end
+    class Attack attack
+    class AE attack
+
+    subgraph Moderate["仲裁评分"]
+        BM["brainstorm-moderator<br/>归纳·追问·评分"]
+    end
+    class Moderate mod
+    class BM mod
+
+    subgraph Output["决策输出"]
+        O1["创新点ID"]
+        O2["评分：新颖性/创造性<br/>实用性"]
+        O3["决策：ACCEPT/<br/>ITERATE/REJECT"]
+    end
+    class Output output
+    class O1,O2,O3 output
+
+    PR["path-recorder<br/>记录节点"]
+    class PR path
+
+    Arch -->|"TRIZ启发"| IA
+    IA -->|"候选方案"| AE
+    AE ==>|"攻击质疑<br/>无效风险"| IA
+    AE -->|"攻防记录"| BM
+    IA -->|"创新点"| BM
+    BM --> O1
+    BM --> O2
+    BM --> O3
+    BM --> PR
+
+    style Innovation fill:#eff6ff,stroke:#3b82f6
+    style Attack fill:#fef2f2,stroke:#dc2626
+    style Moderate fill:#f5f3ff,stroke:#7c3aed
